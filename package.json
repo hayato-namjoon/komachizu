@@ -1,0 +1,21 @@
+{
+  "name": "komachizu",
+  "version": "1.0.0",
+  "scripts": {
+    "dev": "next dev"
+  },
+  "dependencies": {
+    "@hello-pangea/dnd": "^18.0.1",
+    "@supabase/supabase-js": "^2.105.3",
+    "leaflet": "^1.9.4",
+    "next": "^14.2.3",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-leaflet": "^4.2.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/react": "^18.0.0",
+    "typescript": "^5.0.0"
+  }
+}
