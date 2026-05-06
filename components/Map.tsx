@@ -1,7 +1,8 @@
 // @ts-nocheck
 /* eslint-disable @typescript-eslint/no-explicit-any */
 // components/Map.tsx
-import { MapContainer, TileLayer, Marker, Polyline, Popup, useMapEvents } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Polyline, Popup, useMapEvents, useMap } from 'react-leaflet';
+import { useEffect } from 'react';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 
@@ -9,6 +10,7 @@ type Point = { lat: number; lng: number; instruction: string; direction: string 
 type MapProps = {
   points: Point[];
   onMapClick: (lat: number, lng: number) => void;
+  center: [number, number]; // 🌟 追加：親から中心座標を受け取る
 };
 
 const createCustomIcon = (direction: string, index: number) => {
@@ -34,42 +36,38 @@ const createCustomIcon = (direction: string, index: number) => {
     </div>
   `;
 
-  return L.divIcon({
-    html: htmlContent,
-    className: '',
-    iconSize: [30, 30],
-    iconAnchor: [15, 15],
-    popupAnchor: [0, -15],
-  });
+  return L.divIcon({ html: htmlContent, className: '', iconSize: [30, 30], iconAnchor: [15, 15], popupAnchor: [0, -15] });
 };
 
 function MapClickHandler({ onMapClick }: { onMapClick: (lat: number, lng: number) => void }) {
-  useMapEvents({
-    click(e) {
-      onMapClick(e.latlng.lat, e.latlng.lng);
-    },
-  });
+  useMapEvents({ click(e) { onMapClick(e.latlng.lat, e.latlng.lng); } });
   return null;
 }
 
-export default function Map({ points, onMapClick }: MapProps) {
-  // 🌟 ここがポイント！型エラーを無視するために MapContainer を any 型として扱う
+// 🌟 追加：受け取った座標へ地図を滑らかに移動させるコンポーネント
+function MapUpdater({ center }: { center: [number, number] }) {
+  const map = useMap();
+  useEffect(() => {
+    map.flyTo(center, 15, { animate: true, duration: 1.5 }); // flyToを使うとアニメーションで飛んでいきます！
+  }, [center, map]);
+  return null;
+}
+
+export default function Map({ points, onMapClick, center }: MapProps) {
   const MapComp = MapContainer as any;
 
   return (
-    <MapComp center={[35.6812, 139.7671]} zoom={15} style={{ height: '500px', width: '100%' }}>
+    <MapComp center={center} zoom={15} style={{ height: '500px', width: '100%' }}>
       <TileLayer
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
+      
+      <MapUpdater center={center} /> {/* 🌟 追加：移動用コンポーネントを配置 */}
       <MapClickHandler onMapClick={onMapClick} />
       
       {points.map((p, index) => (
-        <Marker 
-          key={index} 
-          position={[p.lat, p.lng] as any} 
-          icon={createCustomIcon(p.direction, index)}
-        >
+        <Marker key={index} position={[p.lat, p.lng] as any} icon={createCustomIcon(p.direction, index)}>
           <Popup>
             <div style={{ fontWeight: 'bold', marginBottom: '4px' }}>ポイント {index + 1}</div>
             <div style={{ fontSize: '14px' }}>
