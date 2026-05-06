@@ -58,8 +58,9 @@ export default function Map({ points, onMapClick }: MapProps) {
   const polylinePositions: LatLngExpression[] = points.map(p => [p.lat, p.lng]);
 
   return (
+    // @ts-ignore: MapContainerの型定義エラーを一時的に回避
     <MapContainer 
-      center={initialCenter} // 🌟 修正した変数を渡す
+      center={initialCenter} 
       zoom={15} 
       style={{ height: '500px', width: '100%' }}
     >
