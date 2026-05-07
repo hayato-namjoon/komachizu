@@ -5,13 +5,12 @@ import dynamic from 'next/dynamic';
 import { useState, useEffect } from 'react';
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
 import { supabase } from '../utils/supabase';
-
-// 🌟 先ほど作ったプロンプト生成関数をインポート
 import { generateAIPrompt } from '../utils/promptGenerator';
 
 const Map = dynamic(() => import('../components/Map'), { ssr: false });
 
-type Point = { lat: number; lng: number; instruction: string; direction: string };
+// 🌟 変更: svgCode を追加
+type Point = { lat: number; lng: number; instruction: string; direction: string; svgCode?: string };
 type Course = { id: string; title: string; points: Point[] };
 
 const DIRECTION_OPTIONS = ['📍 指定なし', '⬆️ 直進', '➡️ 右折', '⬅️ 左折', '↗️ 斜め右', '↖️ 斜め左', '↪️ Uターン', '🏁 ゴール'];
@@ -67,8 +66,18 @@ export default function Home() {
         }
     };
 
-    const handleMapClick = (lat: number, lng: number) => { setPoints([...points, { lat, lng, instruction: '', direction: '📍 指定なし' }]); };
-    const updatePoint = (index: number, field: 'instruction' | 'direction', value: string) => { const newPoints = [...points]; newPoints[index][field] = value; setPoints(newPoints); };
+    // 🌟 変更: 新規追加時に svgCode の空文字をセット
+    const handleMapClick = (lat: number, lng: number) => {
+        setPoints([...points, { lat, lng, instruction: '', direction: '📍 指定なし', svgCode: '' }]);
+    };
+
+    // 🌟 変更: svgCode も更新できるように型の制限を緩和
+    const updatePoint = (index: number, field: keyof Point, value: string) => {
+        const newPoints = [...points];
+        newPoints[index] = { ...newPoints[index], [field]: value };
+        setPoints(newPoints);
+    };
+
     const removePoint = (index: number) => { setPoints(points.filter((_, i) => i !== index)); };
     const handleUndo = () => { setPoints(points.slice(0, -1)); };
     const handleClear = () => { if (confirm('本当にクリアしますか？')) setPoints([]); };
@@ -100,7 +109,6 @@ export default function Home() {
         }
     };
 
-    // 🌟 追加：プロンプトを生成してクリップボードにコピーする機能
     const handleCopyPrompt = () => {
         if (!title || points.length < 2) {
             alert('コース名を入力し、ピンを2つ以上打ってから生成してください。');
@@ -144,11 +152,7 @@ export default function Home() {
                     <button onClick={handleUndo} disabled={points.length === 0} style={{ marginRight: '10px', padding: '8px 16px', cursor: 'pointer' }}>↩️ 最後のピンを戻す</button>
                     <button onClick={handleClear} disabled={points.length === 0} style={{ padding: '8px 16px', color: 'red', cursor: 'pointer' }}>🗑️ すべてクリア</button>
                 </div>
-                {/* 🌟 追加：プロンプト生成ボタン */}
-                <button
-                    onClick={handleCopyPrompt}
-                    style={{ padding: '8px 16px', backgroundColor: '#722ed1', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}
-                >
+                <button onClick={handleCopyPrompt} style={{ padding: '8px 16px', backgroundColor: '#722ed1', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>
                     🤖 AI用プロンプトをコピー
                 </button>
             </div>
@@ -171,18 +175,27 @@ export default function Home() {
                                             {points.map((p, i) => (
                                                 <Draggable key={`point-${i}`} draggableId={`point-${i}`} index={i}>
                                                     {(provided, snapshot) => (
-                                                        <div ref={provided.innerRef} {...provided.draggableProps} style={{ padding: '10px', backgroundColor: snapshot.isDragging ? '#e6f7ff' : '#fff', border: '1px solid #eee', borderRadius: '6px', ...provided.draggableProps.style }}>
+                                                        <div ref={provided.innerRef} {...provided.draggableProps} style={{ padding: '15px', backgroundColor: snapshot.isDragging ? '#e6f7ff' : '#fff', border: '1px solid #eee', borderRadius: '6px', ...provided.draggableProps.style }}>
                                                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                                                                 <div {...provided.dragHandleProps} style={{ cursor: 'grab', marginRight: '10px', color: '#999' }}>
                                                                     <span style={{ fontSize: '18px' }}>≡</span> <strong>ポイント {i + 1}</strong>
                                                                 </div>
                                                                 <button onClick={() => removePoint(i)} style={{ border: 'none', background: 'transparent', color: 'red', cursor: 'pointer', fontSize: '12px' }}>❌ 削除</button>
                                                             </div>
-                                                            <div style={{ display: 'flex', gap: '8px' }}>
+                                                            <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
                                                                 <select value={p.direction} onChange={(e) => updatePoint(i, 'direction', e.target.value)} style={{ padding: '6px', borderRadius: '4px', border: '1px solid #ccc' }}>
                                                                     {DIRECTION_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
                                                                 </select>
                                                                 <input type="text" value={p.instruction} onChange={(e) => updatePoint(i, 'instruction', e.target.value)} placeholder="例：T字路を右折" style={{ flex: '1', padding: '6px', border: '1px solid #ccc', borderRadius: '4px' }} />
+                                                            </div>
+                                                            {/* 🌟 追加: SVGコードを貼り付けるテキストエリア */}
+                                                            <div>
+                                                                <textarea
+                                                                    value={p.svgCode || ''}
+                                                                    onChange={(e) => updatePoint(i, 'svgCode', e.target.value)}
+                                                                    placeholder="AIが生成したSVGコード（<svg>...</svg>）をここに貼り付け"
+                                                                    style={{ width: '100%', padding: '8px', border: '1px solid #ccc', borderRadius: '4px', height: '60px', fontFamily: 'monospace', fontSize: '12px', resize: 'vertical' }}
+                                                                />
                                                             </div>
                                                         </div>
                                                     )}
