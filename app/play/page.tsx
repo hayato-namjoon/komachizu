@@ -4,12 +4,12 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../utils/supabase';
 
-type Point = { lat: number; lng: number; instruction: string; direction: string };
+// 🌟 変更: svgCode を型に追加
+type Point = { lat: number; lng: number; instruction: string; direction: string; svgCode?: string };
 type Course = { id: string; title: string; points: Point[] };
 
-// 🌍 2つの緯度経度から、距離（メートル）を計算する関数（ハヴァサイン公式）
 function getDistance(lat1: number, lon1: number, lat2: number, lon2: number) {
-    const R = 6371e3; // 地球の半径 (メートル)
+    const R = 6371e3;
     const φ1 = (lat1 * Math.PI) / 180;
     const φ2 = (lat2 * Math.PI) / 180;
     const Δφ = ((lat2 - lat1) * Math.PI) / 180;
@@ -17,7 +17,7 @@ function getDistance(lat1: number, lon1: number, lat2: number, lon2: number) {
 
     const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return Math.floor(R * c); // 小数点以下を切り捨てて整数メートルで返す
+    return Math.floor(R * c);
 }
 
 export default function PlayPage() {
@@ -25,7 +25,6 @@ export default function PlayPage() {
     const [selectedCourse, setSelectedCourse] = useState<Course | null>(null);
     const [currentIndex, setCurrentIndex] = useState(0);
 
-    // 🌟 GPS連動用のステート
     const [currentLoc, setCurrentLoc] = useState<{ lat: number; lng: number } | null>(null);
     const [isGpsActive, setIsGpsActive] = useState(false);
     const [distanceToTarget, setDistanceToTarget] = useState<number | null>(null);
@@ -38,7 +37,6 @@ export default function PlayPage() {
         fetchCourses();
     }, []);
 
-    // 🌟 GPSの追跡を開始・停止する処理
     const toggleGps = () => {
         if (isGpsActive) {
             setIsGpsActive(false);
@@ -66,14 +64,12 @@ export default function PlayPage() {
         );
     };
 
-    // 🌟 現在地が更新されるか、次のポイントに進んだ時に距離を再計算する
     useEffect(() => {
         if (currentLoc && selectedCourse) {
             const target = selectedCourse.points[currentIndex];
             const dist = getDistance(currentLoc.lat, currentLoc.lng, target.lat, target.lng);
             setDistanceToTarget(dist);
 
-            // ターゲットまで「20メートル以内」に近づいたら、自動的に次へ進む！
             if (dist < 20 && currentIndex < selectedCourse.points.length - 1) {
                 alert('📍 チェックポイントに到着しました！次の指示へ進みます。');
                 setCurrentIndex((prev) => prev + 1);
@@ -129,7 +125,6 @@ export default function PlayPage() {
                 </div>
             </div>
 
-            {/* 🌟 GPS連動スイッチと残り距離の表示エリア */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#fff', padding: '10px 15px', borderRadius: '12px', boxShadow: '0 2px 4px rgba(0,0,0,0.05)', marginBottom: '20px' }}>
                 <button
                     onClick={toggleGps}
@@ -144,10 +139,20 @@ export default function PlayPage() {
 
             <h2 style={{ textAlign: 'center', marginTop: 0, color: '#333' }}>{selectedCourse.title}</h2>
 
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', backgroundColor: '#f0f8ff', borderRadius: '20px', padding: '40px 20px', margin: '10px 0 20px 0', boxShadow: '0 8px 16px rgba(0,0,0,0.1)', border: '2px solid #bae0ff' }}>
-                <div style={{ fontSize: '100px', lineHeight: '1', marginBottom: '20px', filter: 'drop-shadow(0px 4px 4px rgba(0,0,0,0.2))' }}>
-                    {currentPoint.direction === '📍 指定なし' ? '📍' : emoji}
-                </div>
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', backgroundColor: '#fff', borderRadius: '20px', padding: '40px 20px', margin: '10px 0 20px 0', boxShadow: '0 8px 16px rgba(0,0,0,0.1)', border: '2px solid #bae0ff' }}>
+
+                {/* 🌟 変更: SVGコードがあればSVGを、なければ今までの絵文字を表示する */}
+                {currentPoint.svgCode && currentPoint.svgCode.trim() !== '' ? (
+                    <div
+                        style={{ width: '100%', maxWidth: '250px', display: 'flex', justifyContent: 'center', marginBottom: '20px' }}
+                        dangerouslySetInnerHTML={{ __html: currentPoint.svgCode }}
+                    />
+                ) : (
+                    <div style={{ fontSize: '100px', lineHeight: '1', marginBottom: '20px', filter: 'drop-shadow(0px 4px 4px rgba(0,0,0,0.2))' }}>
+                        {currentPoint.direction === '📍 指定なし' ? '📍' : emoji}
+                    </div>
+                )}
+
                 <div style={{ fontSize: '24px', fontWeight: 'bold', textAlign: 'center', color: '#333' }}>
                     {currentPoint.instruction || '道なりに進む'}
                 </div>
