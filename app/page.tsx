@@ -268,7 +268,7 @@ export default function Home() {
                         <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearchLocation()} placeholder="都道府県、市区町村、または郵便番号" style={{ flex: '1', padding: '8px', borderRadius: '4px', border: '1px solid #91d5ff' }} />
                         <button onClick={handleSearchLocation} style={{ padding: '8px 16px', backgroundColor: '#1890ff', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>ジャンプ</button>
                     </div>
-                    <Map center="{mapCenter}" onMapClick="{handleMapClick}" points="{points}" />
+                    <Map center={mapCenter} onMapClick={handleMapClick} points={points} />
                 </div>
 
                 <div style={{ width: '450px', padding: '15px', border: '1px solid #ddd', borderRadius: '8px', backgroundColor: '#f9f9f9', maxHeight: '700px', overflowY: 'auto' }}>
