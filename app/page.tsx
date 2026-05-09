@@ -5,7 +5,7 @@ import dynamic from 'next/dynamic';
 import { useState, useEffect } from 'react';
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
 import { supabase } from '../utils/supabase';
-import { generateAIPrompt, Point } from '../utils/promptGenerator'; // 🌟 更新したPoint型をインポート
+import { generateAIPrompt, Point } from '../utils/promptGenerator';
 
 const Map = dynamic(() => import('../components/Map'), { ssr: false });
 
@@ -23,6 +23,9 @@ export default function Home() {
     const [editingId, setEditingId] = useState<string | null>(null);
     const [mapCenter, setMapCenter] = useState<[number, number]>([35.6812, 139.7671]);
     const [searchQuery, setSearchQuery] = useState('');
+
+    // 🌟 追加：説明書の開閉ステート
+    const [showInstructions, setShowInstructions] = useState(false);
 
     useEffect(() => {
         setIsBrowser(true);
@@ -53,7 +56,6 @@ export default function Home() {
         }
     };
 
-    // 新規ピン追加時の初期値
     const handleMapClick = (lat: number, lng: number) => {
         setPoints([...points, { lat, lng, instruction: '', direction: '📍 指定なし', svgCode: '', intersectionShape: '十字路', clockPositions: [12], correctClock: 12, customNote: '' }]);
     };
@@ -64,7 +66,6 @@ export default function Home() {
         setPoints(newPoints);
     };
 
-    // 時計のチェックボックスをON/OFFする処理
     const toggleClockPosition = (index: number, hour: number) => {
         const currentPoint = points[index];
         let newPositions = currentPoint.clockPositions || [];
@@ -75,7 +76,6 @@ export default function Home() {
         }
         updatePoint(index, 'clockPositions', newPositions);
 
-        // もし正解の方角がチェック外されたら、残っている最初の方角に直す
         if (!newPositions.includes(currentPoint.correctClock || 12) && newPositions.length > 0) {
             updatePoint(index, 'correctClock', newPositions[0]);
         }
@@ -110,7 +110,42 @@ export default function Home() {
     return (
         <div style={{ padding: '20px', maxWidth: '1200px', margin: '0 auto' }}>
             <h1>コマ地図ウォークラリー：コース作成</h1>
-            {/* 上部の保存UI等はそのまま */}
+
+            {/* 🌟 追加：使い方ガイド（アコーディオン） */}
+            <div style={{ marginBottom: '20px', backgroundColor: '#fffbe6', border: '1px solid #ffe58f', borderRadius: '8px', overflow: 'hidden' }}>
+                <div
+                    onClick={() => setShowInstructions(!showInstructions)}
+                    style={{ padding: '12px 15px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#fff1b8', fontWeight: 'bold', color: '#d48806' }}
+                >
+                    <span>💡 コース作成の手順とコツ（初めての方・使い方を忘れた方へ）</span>
+                    <span>{showInstructions ? '▲ 閉じる' : '▼ 開く'}</span>
+                </div>
+
+                {showInstructions && (
+                    <div style={{ padding: '15px', color: '#5c3a21', fontSize: '14px', lineHeight: '1.6' }}>
+                        <ol style={{ margin: 0, paddingLeft: '20px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                            <li>
+                                <strong>マップにピンを打つ：</strong> 地図上をクリックしてルートを作成します。検索窓で地名を入れてジャンプも可能です。
+                            </li>
+                            <li>
+                                <strong>交差点の形状を設定する：</strong> 右側のリストから、各ポイントの交差点の形（十字路、Y字路など）を選びます。<br />
+                                <span style={{ fontSize: '13px', color: '#8a5a19' }}>※ 複雑な分岐の場合は「その他（詳細設定）」を選び、道がある方角を時計の文字盤で指定してください（プレイヤーが歩いてくる方向は常に「6時」になります）。</span>
+                            </li>
+                            <li>
+                                <strong>AI用プロンプトを生成：</strong> 準備ができたら紫色の「🤖 AI用プロンプトコピー」ボタンを押します。
+                            </li>
+                            <li>
+                                <strong>AIに画像(SVG)を描かせる：</strong> ChatGPTやClaude等にコピーした文章を貼り付けます。<br />
+                                <span style={{ fontSize: '13px', color: '#8a5a19' }}>※ 出力された <code>&lt;svg&gt;...&lt;/svg&gt;</code> のコードを、リストの一番下のテキストエリアに貼り付けます。</span>
+                            </li>
+                            <li>
+                                <strong>保存する：</strong> 最後にコース名をつけて「保存」ボタンを押せば完成です！
+                            </li>
+                        </ol>
+                    </div>
+                )}
+            </div>
+
             <div style={{ display: 'flex', gap: '10px', marginBottom: '20px', padding: '15px', backgroundColor: '#f0f2f5', borderRadius: '8px' }}>
                 <select value={editingId || ''} onChange={handleLoadCourse} style={{ flex: '1', padding: '8px' }}>
                     <option value="">＋ 新規コース作成</option>
@@ -118,6 +153,12 @@ export default function Home() {
                 </select>
                 <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="コース名" style={{ flex: '2', padding: '8px' }} />
                 <button onClick={saveCourse} disabled={isSaving} style={{ padding: '8px 24px', backgroundColor: '#1890ff', color: 'white', border: 'none', borderRadius: '4px' }}>保存</button>
+            </div>
+
+            <div style={{ display: 'flex', gap: '10px', marginBottom: '15px', padding: '15px', backgroundColor: '#e6f7ff', borderRadius: '8px', border: '1px solid #91d5ff' }}>
+                <strong style={{ display: 'flex', alignItems: 'center', whiteSpace: 'nowrap' }}>🔍 地図を移動:</strong>
+                <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearchLocation()} placeholder="都道府県、市区町村、または郵便番号（例: 北海道, 100-0001）" style={{ flex: '1', padding: '8px', borderRadius: '4px', border: '1px solid #91d5ff' }} />
+                <button onClick={handleSearchLocation} style={{ padding: '8px 16px', backgroundColor: '#1890ff', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>ジャンプ 🚀</button>
             </div>
 
             <div style={{ marginBottom: '15px', display: 'flex', justifyContent: 'space-between' }}>
@@ -149,7 +190,6 @@ export default function Home() {
                                                             <button onClick={() => removePoint(i)} style={{ color: 'red', border: 'none', background: 'none' }}>❌</button>
                                                         </div>
 
-                                                        {/* アイコンとテキスト指示 */}
                                                         <div style={{ display: 'flex', gap: '8px', marginBottom: '10px' }}>
                                                             <select value={p.direction} onChange={(e) => updatePoint(i, 'direction', e.target.value)} style={{ padding: '6px', width: '100px' }}>
                                                                 {DIRECTION_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
@@ -157,7 +197,6 @@ export default function Home() {
                                                             <input type="text" value={p.instruction} onChange={(e) => updatePoint(i, 'instruction', e.target.value)} placeholder="例：看板を右" style={{ flex: '1', padding: '6px' }} />
                                                         </div>
 
-                                                        {/* 🌟 形状指定エリア */}
                                                         <div style={{ padding: '10px', backgroundColor: '#f0f5ff', borderRadius: '6px', marginBottom: '10px' }}>
                                                             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '5px' }}>
                                                                 <strong>🗺️ 形状:</strong>
@@ -166,7 +205,6 @@ export default function Home() {
                                                                 </select>
                                                             </div>
 
-                                                            {/* その他（詳細設定）が選ばれた時だけ表示される時計UI */}
                                                             {p.intersectionShape === 'その他（詳細設定）' && (
                                                                 <div style={{ padding: '10px', backgroundColor: '#fff', border: '1px solid #bae0ff', borderRadius: '6px', marginTop: '10px' }}>
                                                                     <p style={{ margin: '0 0 5px 0', fontSize: '12px', color: '#666' }}>🕒 道がある方角にチェック（6時は固定）</p>
@@ -188,11 +226,9 @@ export default function Home() {
                                                                 </div>
                                                             )}
 
-                                                            {/* フリーテキストの補足指示 */}
                                                             <input type="text" value={p.customNote || ''} onChange={(e) => updatePoint(i, 'customNote', e.target.value)} placeholder="AIへの補足（例: 中央に丸い花壇がある）" style={{ width: '100%', padding: '6px', marginTop: '8px', fontSize: '12px' }} />
                                                         </div>
 
-                                                        {/* SVG貼り付け欄 */}
                                                         <textarea value={p.svgCode || ''} onChange={(e) => updatePoint(i, 'svgCode', e.target.value)} placeholder="AIが生成したSVGコード（<svg>...</svg>）をここに貼り付け" style={{ width: '100%', padding: '8px', border: '1px solid #ccc', borderRadius: '4px', height: '60px', fontFamily: 'monospace', fontSize: '12px' }} />
                                                     </div>
                                                 )}
