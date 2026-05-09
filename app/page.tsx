@@ -14,6 +14,9 @@ type Course = { id: string; title: string; points: Point[] };
 const DIRECTION_OPTIONS = ['📍 指定なし', '⬆️ 直進', '➡️ 右折', '⬅️ 左折', '↗️ 斜め右', '↖️ 斜め左', '↪️ Uターン', '🏁 ゴール'];
 const SHAPE_OPTIONS = ['十字路', 'Y字路', 'T字路（突き当たり）', 'ト字路（右分岐）', '逆ト字路（左分岐）', 'その他（詳細設定）'];
 
+// 🌟 追加：状態の選択肢
+const POINT_TYPES = ['スタート地点', 'ただの道順', 'チェックポイント', 'ゴール'];
+
 const VALID_DIRECTIONS: Record<string, string[]> = {
     '十字路': ['⬆️ 直進', '➡️ 右折', '⬅️ 左折', '↪️ Uターン'],
     'Y字路': ['↗️ 斜め右', '↖️ 斜め左', '➡️ 右折', '⬅️ 左折'],
@@ -64,7 +67,9 @@ export default function Home() {
     };
 
     const handleMapClick = (lat: number, lng: number) => {
-        setPoints([...points, { lat, lng, instruction: '', direction: '⬆️ 直進', svgCode: '', intersectionShape: '十字路', clockPositions: [12], correctClock: 12, customNote: '' }]);
+        // 🌟 変更：最初のピンは「スタート地点」、それ以降は「ただの道順」を初期値にする
+        const initialType = points.length === 0 ? 'スタート地点' : 'ただの道順';
+        setPoints([...points, { lat, lng, instruction: '', direction: '⬆️ 直進', svgCode: '', intersectionShape: '十字路', clockPositions: [12], correctClock: 12, customNote: '', pointType: initialType }]);
     };
 
     const updatePoint = (index: number, field: keyof Point, value: any) => {
@@ -107,18 +112,15 @@ export default function Home() {
         setPoints(items);
     };
 
-    // 🌟 変更：同名チェックと上書き処理を追加
     const saveCourse = async () => {
         if (!title || points.length === 0) return alert('コース名とピンの配置が必要です！');
-
-        // 入力されたコース名と同じ名前のコースが既に存在するかチェック（現在編集中のものを除く）
         const existingCourse = courses.find(c => c.title === title && c.id !== editingId);
         let targetId = editingId;
 
         if (existingCourse) {
             const confirmOverwrite = confirm(`「${title}」という名前のコースは既に存在します。\n上書き保存してもよろしいですか？`);
-            if (!confirmOverwrite) return; // キャンセルした場合は処理を中断
-            targetId = existingCourse.id;  // 既存コースのIDをターゲットにする
+            if (!confirmOverwrite) return;
+            targetId = existingCourse.id;
         }
 
         setIsSaving(true);
@@ -131,11 +133,7 @@ export default function Home() {
                 alert('🎉 新規保存しました！');
             }
             fetchCourses();
-
-            // 別のコースに上書きした場合、編集中のIDを更新しておく
-            if (targetId && targetId !== editingId) {
-                setEditingId(targetId);
-            }
+            if (targetId && targetId !== editingId) setEditingId(targetId);
         } catch (error) {
             alert('保存に失敗しました。');
         } finally {
@@ -143,7 +141,6 @@ export default function Home() {
         }
     };
 
-    // 🌟 追加：コース削除処理
     const deleteCourse = async () => {
         if (!editingId) return;
         const confirmDelete = confirm(`本当にコース「${title}」を削除しますか？\nこの操作は取り消せません。`);
@@ -152,19 +149,21 @@ export default function Home() {
         try {
             await supabase.from('courses').delete().eq('id', editingId);
             alert('🗑️ コースを削除しました。');
-            // 状態を初期化して新規作成モードに戻す
-            setEditingId(null);
-            setTitle('');
-            setPoints([]);
-            fetchCourses();
-        } catch (error) {
-            alert('削除に失敗しました。');
-        }
+            setEditingId(null); setTitle(''); setPoints([]); fetchCourses();
+        } catch (error) { alert('削除に失敗しました。'); }
     };
 
     const handleCopyPrompt = () => {
         const promptText = generateAIPrompt(title, points);
         navigator.clipboard.writeText(promptText).then(() => alert('🤖 プロンプトをコピーしました！'));
+    };
+
+    // 種類に応じたヘッダー色を返すヘルパー関数
+    const getHeaderColor = (type?: string) => {
+        if (type === 'スタート地点') return '#1890ff'; // 青
+        if (type === 'ゴール') return '#ff4d4f'; // 赤
+        if (type === 'チェックポイント') return '#faad14'; // オレンジ
+        return '#333'; // デフォルト
     };
 
     return (
@@ -179,19 +178,11 @@ export default function Home() {
                     <div style={{ padding: '15px', color: '#5c3a21', fontSize: '14px', lineHeight: '1.6' }}>
                         <ol style={{ margin: 0, paddingLeft: '20px', display: 'flex', flexDirection: 'column', gap: '15px' }}>
                             <li><strong>マップにピンを打つ：</strong> 地図上をクリックしてルートを作成します。</li>
-                            <li><strong>交差点の形状を設定する：</strong> 右側のリストから、交差点の形を選びます。選んだ形に合わせて、矛盾しない「正しい進行方向」しか選べないようになっています。
-                                <div style={{ marginTop: '8px', padding: '12px', backgroundColor: '#fff', border: '1px solid #ffe58f', borderRadius: '6px' }}>
-                                    <strong style={{ display: 'block', marginBottom: '5px', color: '#d48806' }}>🕒 「その他（詳細設定）」の使い方（時計の文字盤）</strong>
-                                    <ul style={{ marginTop: '5px', marginBottom: '0', paddingLeft: '20px', color: '#8a5a19' }}>
-                                        <li><strong>プレイヤーが歩いてくる道は常に「6時」</strong>です。</li>
-                                        <li><strong>道が存在する方角</strong>にすべてチェックを入れます。</li>
-                                        <li>最後に、その中から<strong>「進むべき正しい方向」</strong>を選びます。</li>
-                                    </ul>
-                                </div>
-                            </li>
+                            <li><strong>各地点の「状態」を選ぶ：</strong> スタート、ただの道順、チェックポイント、ゴールをプルダウンから設定します。</li>
+                            <li><strong>交差点の形状を設定する：</strong> 右側のリストから、交差点の形を選びます。</li>
                             <li><strong>AI用プロンプトを生成：</strong> 「🤖 AI用プロンプトコピー」ボタンを押します。</li>
-                            <li><strong>AIに画像を描かせる：</strong> ChatGPT等に貼り付け、出力された <code>&lt;svg&gt;...</code> を各ポイントの一番下の枠に貼り付けます。</li>
-                            <li><strong>保存する：</strong> コース名をつけて保存します。<br /><span style={{ fontSize: '13px', color: '#8a5a19' }}>※既存のコースと同じ名前にした場合は、上書き保存されます。</span></li>
+                            <li><strong>AIに画像を描かせる：</strong> ChatGPT等に貼り付け、出力されたSVGを枠に貼り付けます。</li>
+                            <li><strong>保存する：</strong> コース名をつけて保存します。</li>
                         </ol>
                     </div>
                 )}
@@ -202,14 +193,9 @@ export default function Home() {
                     <option value="">＋ 新規コース作成</option>
                     {courses.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
                 </select>
-
-                {/* 🌟 削除ボタンを追加（既存コースを開いている時だけ表示） */}
                 {editingId && (
-                    <button onClick={deleteCourse} style={{ padding: '8px 16px', backgroundColor: '#ff4d4f', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>
-                        🗑️ 削除
-                    </button>
+                    <button onClick={deleteCourse} style={{ padding: '8px 16px', backgroundColor: '#ff4d4f', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>🗑️ 削除</button>
                 )}
-
                 <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="コース名" style={{ flex: '2', padding: '8px', borderRadius: '4px', border: '1px solid #ccc' }} />
                 <button onClick={saveCourse} disabled={isSaving} style={{ padding: '8px 24px', backgroundColor: '#1890ff', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>
                     {isSaving ? '⏳ 保存中...' : '💾 保存'}
@@ -249,9 +235,25 @@ export default function Home() {
                                                 <Draggable key={`point-${i}`} draggableId={`point-${i}`} index={i}>
                                                     {(provided, snapshot) => (
                                                         <div ref={provided.innerRef} {...provided.draggableProps} style={{ padding: '15px', backgroundColor: snapshot.isDragging ? '#e6f7ff' : '#fff', border: '1px solid #ddd', borderRadius: '8px', ...provided.draggableProps.style }}>
+
                                                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-                                                                <div {...provided.dragHandleProps} style={{ cursor: 'grab', fontWeight: 'bold' }}>≡ ポイント {i + 1}</div>
+                                                                {/* 🌟 変更：状態によってヘッダーの色を変えて見やすくする */}
+                                                                <div {...provided.dragHandleProps} style={{ cursor: 'grab', fontWeight: 'bold', color: getHeaderColor(p.pointType) }}>
+                                                                    ≡ ポイント {i + 1} {p.pointType ? `(${p.pointType})` : ''}
+                                                                </div>
                                                                 <button onClick={() => removePoint(i)} style={{ color: 'red', border: 'none', background: 'none', cursor: 'pointer' }}>❌</button>
+                                                            </div>
+
+                                                            {/* 🌟 追加：ポイントの状態を選択するプルダウン */}
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '15px', padding: '8px', backgroundColor: '#f6ffed', border: '1px solid #b7eb8f', borderRadius: '6px' }}>
+                                                                <strong style={{ whiteSpace: 'nowrap', color: '#52c41a' }}>🚩 役割:</strong>
+                                                                <select
+                                                                    value={p.pointType || 'ただの道順'}
+                                                                    onChange={(e) => updatePoint(i, 'pointType', e.target.value)}
+                                                                    style={{ padding: '6px', flex: 1, borderRadius: '4px', border: '1px solid #ccc', fontWeight: 'bold' }}
+                                                                >
+                                                                    {POINT_TYPES.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                                                                </select>
                                                             </div>
 
                                                             <div style={{ padding: '10px', backgroundColor: '#f0f5ff', borderRadius: '6px', marginBottom: '10px' }}>
