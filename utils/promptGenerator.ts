@@ -17,15 +17,10 @@ function getBearing(lat1: number, lng1: number, lat2: number, lng2: number): str
     return directions[Math.round(theta / 45)];
 }
 
+// 🌟 変更：Uターンの時の矢印の描き方を具体的に指示する
 function getShapePrompt(point: Point): string {
     const shape = point.intersectionShape || '十字路';
     const dirEmoji = point.direction.split(' ')[0];
-
-    if (shape === 'その他（詳細設定）') {
-        const roads = point.clockPositions || [12];
-        const correct = point.correctClock || roads[0];
-        return `中心(50,50)から ${roads.join('時、')}時、6時 の方向に黒い道を引いてください。そして、${correct}時の方向へ向かって赤い矢印を描いてください。`;
-    }
 
     let targetClock = 12;
     if (dirEmoji === '➡️') targetClock = 3;
@@ -34,15 +29,32 @@ function getShapePrompt(point: Point): string {
     if (dirEmoji === '↖️') targetClock = 10;
     if (dirEmoji === '↪️') targetClock = 6;
 
+    if (shape === 'その他（詳細設定）') {
+        const roads = point.clockPositions || [12];
+        const correct = point.correctClock || roads[0];
+        const arrowInst = correct === 6
+            ? 'そして、中心付近でぐるっとUターンして6時の方向へ戻る「U字型の赤い矢印（曲線）」を描いてください。'
+            : `そして、${correct}時の方向へ向かって赤い矢印を描いてください。`;
+        return `中心(50,50)から ${roads.join('時、')}時、6時 の方向に黒い道を引いてください。${arrowInst}`;
+    }
+
+    // 🌟 Uターン専用のプロンプト
+    const arrowInstruction = targetClock === 6
+        ? 'そして、進入してきた道を戻るように、中心付近でぐるっとUターンして6時の方向へ向かう「U字型の赤い矢印（曲線）」を描いてください。'
+        : `そして、${targetClock}時の方向へ向かって赤い矢印を描いてください。`;
+
     switch (shape) {
-        case '十字路': return `中心(50,50)から 12時、3時、6時、9時 の4方向に黒い道を引いてください。そして、${targetClock}時の方向へ向かって赤い矢印を描いてください。`;
+        case '十字路': return `中心(50,50)から 12時、3時、6時、9時 の4方向に黒い道を引いてください。${arrowInstruction}`;
         case 'Y字路':
             const yClock = (dirEmoji === '➡️' || dirEmoji === '↗️') ? 2 : ((dirEmoji === '⬅️' || dirEmoji === '↖️') ? 10 : targetClock);
-            return `中心(50,50)から 10時、2時、6時 の3方向に黒い道を引いてください。そして、${yClock}時の方向へ向かって赤い矢印を描いてください。`;
-        case 'T字路（突き当たり）': return `中心(50,50)から 9時、3時、6時 の3方向に黒い道を引いてください（12時には道なし）。そして、${targetClock}時の方向へ向かって赤い矢印を描いてください。`;
-        case 'ト字路（右分岐）': return `中心(50,50)から 12時、3時、6時 の3方向に黒い道を引いてください（9時には道なし）。そして、${targetClock}時の方向へ向かって赤い矢印を描いてください。`;
-        case '逆ト字路（左分岐）': return `中心(50,50)から 12時、9時、6時 の3方向に黒い道を引いてください（3時には道なし）。そして、${targetClock}時の方向へ向かって赤い矢印を描いてください。`;
-        default: return `中心(50,50)から 12時と6時 の2方向へ道を引いてください。そして、${targetClock}時の方向へ赤い矢印を描いてください。`;
+            const yArrowInstruction = targetClock === 6
+                ? 'そして、進入してきた道を戻るように、中心付近でぐるっとUターンして6時の方向へ向かう「U字型の赤い矢印（曲線）」を描いてください。'
+                : `そして、${yClock}時の方向へ向かって赤い矢印を描いてください。`;
+            return `中心(50,50)から 10時、2時、6時 の3方向に黒い道を引いてください。${yArrowInstruction}`;
+        case 'T字路（突き当たり）': return `中心(50,50)から 9時、3時、6時 の3方向に黒い道を引いてください（12時には道なし）。${arrowInstruction}`;
+        case 'ト字路（右分岐）': return `中心(50,50)から 12時、3時、6時 の3方向に黒い道を引いてください（9時には道なし）。${arrowInstruction}`;
+        case '逆ト字路（左分岐）': return `中心(50,50)から 12時、9時、6時 の3方向に黒い道を引いてください（3時には道なし）。${arrowInstruction}`;
+        default: return `中心(50,50)から 12時と6時 の2方向へ道を引いてください。${arrowInstruction}`;
     }
 }
 
