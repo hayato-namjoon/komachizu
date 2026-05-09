@@ -23,8 +23,6 @@ export default function Home() {
     const [editingId, setEditingId] = useState<string | null>(null);
     const [mapCenter, setMapCenter] = useState<[number, number]>([35.6812, 139.7671]);
     const [searchQuery, setSearchQuery] = useState('');
-
-    // 🌟 追加：説明書の開閉ステート
     const [showInstructions, setShowInstructions] = useState(false);
 
     useEffect(() => {
@@ -111,7 +109,7 @@ export default function Home() {
         <div style={{ padding: '20px', maxWidth: '1200px', margin: '0 auto' }}>
             <h1>コマ地図ウォークラリー：コース作成</h1>
 
-            {/* 🌟 追加：使い方ガイド（アコーディオン） */}
+            {/* 🌟 変更：使い方ガイドを詳細化 */}
             <div style={{ marginBottom: '20px', backgroundColor: '#fffbe6', border: '1px solid #ffe58f', borderRadius: '8px', overflow: 'hidden' }}>
                 <div
                     onClick={() => setShowInstructions(!showInstructions)}
@@ -123,20 +121,31 @@ export default function Home() {
 
                 {showInstructions && (
                     <div style={{ padding: '15px', color: '#5c3a21', fontSize: '14px', lineHeight: '1.6' }}>
-                        <ol style={{ margin: 0, paddingLeft: '20px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                        <ol style={{ margin: 0, paddingLeft: '20px', display: 'flex', flexDirection: 'column', gap: '15px' }}>
                             <li>
                                 <strong>マップにピンを打つ：</strong> 地図上をクリックしてルートを作成します。検索窓で地名を入れてジャンプも可能です。
                             </li>
                             <li>
-                                <strong>交差点の形状を設定する：</strong> 右側のリストから、各ポイントの交差点の形（十字路、Y字路など）を選びます。<br />
-                                <span style={{ fontSize: '13px', color: '#8a5a19' }}>※ 複雑な分岐の場合は「その他（詳細設定）」を選び、道がある方角を時計の文字盤で指定してください（プレイヤーが歩いてくる方向は常に「6時」になります）。</span>
+                                <strong>交差点の形状を設定する：</strong> 右側のリストから、各ポイントの交差点の形（十字路、Y字路など）を選びます。
+
+                                {/* 🌟 追加：時計の文字盤の詳しい解説ボックス */}
+                                <div style={{ marginTop: '8px', padding: '12px', backgroundColor: '#fff', border: '1px solid #ffe58f', borderRadius: '6px' }}>
+                                    <strong style={{ display: 'block', marginBottom: '5px', color: '#d48806' }}>🕒 「その他（詳細設定）」の使い方（時計の文字盤）</strong>
+                                    複雑な分岐を表現する場合は、交差点を「時計」に見立てて設定します。<br />
+                                    <ul style={{ marginTop: '5px', marginBottom: '0', paddingLeft: '20px', color: '#8a5a19' }}>
+                                        <li><strong>プレイヤーが歩いてくる道は常に「6時」</strong>です（固定されています）。</li>
+                                        <li><strong>道が存在する方角</strong>にすべてチェックを入れます。<br />
+                                            <span style={{ fontSize: '13px', color: '#999' }}>例）左に道があれば「9時」、直進があれば「12時」、右斜め前にあれば「2時」にチェック。</span></li>
+                                        <li>最後に、その中から<strong>「進むべき正しい方向（正解ルート）」</strong>を選びます。</li>
+                                    </ul>
+                                </div>
                             </li>
                             <li>
                                 <strong>AI用プロンプトを生成：</strong> 準備ができたら紫色の「🤖 AI用プロンプトコピー」ボタンを押します。
                             </li>
                             <li>
                                 <strong>AIに画像(SVG)を描かせる：</strong> ChatGPTやClaude等にコピーした文章を貼り付けます。<br />
-                                <span style={{ fontSize: '13px', color: '#8a5a19' }}>※ 出力された <code>&lt;svg&gt;...&lt;/svg&gt;</code> のコードを、リストの一番下のテキストエリアに貼り付けます。</span>
+                                <span style={{ fontSize: '13px', color: '#8a5a19' }}>※ 出力された <code>&lt;svg&gt;...&lt;/svg&gt;</code> のコードを、リストの各ポイントの一番下にあるテキストエリアに貼り付けます。</span>
                             </li>
                             <li>
                                 <strong>保存する：</strong> 最後にコース名をつけて「保存」ボタンを押せば完成です！
