@@ -11,9 +11,9 @@ const Map = dynamic(() => import('../components/Map'), { ssr: false });
 
 type Course = { id: string; title: string; points: Point[] };
 
+const DIRECTION_OPTIONS = ['📍 指定なし', '⬆️ 直進', '➡️ 右折', '⬅️ 左折', '↗️ 斜め右', '↖️ 斜め左', '↪️ Uターン', '🏁 ゴール'];
 const SHAPE_OPTIONS = ['十字路', 'Y字路', 'T字路（突き当たり）', 'ト字路（右分岐）', '逆ト字路（左分岐）', 'その他（詳細設定）'];
 
-// 🌟 追加：形状ごとの「選べる方向」を制限する辞書
 const VALID_DIRECTIONS: Record<string, string[]> = {
     '十字路': ['⬆️ 直進', '➡️ 右折', '⬅️ 左折', '↪️ Uターン'],
     'Y字路': ['↗️ 斜め右', '↖️ 斜め左', '➡️ 右折', '⬅️ 左折'],
@@ -71,11 +71,10 @@ export default function Home() {
         const newPoints = [...points];
         newPoints[index] = { ...newPoints[index], [field]: value };
 
-        // 🌟 制約ロジック：形状が変更された時、現在の「指示」が矛盾していれば自動修正する
         if (field === 'intersectionShape') {
             const allowedDirs = VALID_DIRECTIONS[value as string] || VALID_DIRECTIONS['その他（詳細設定）'];
             if (!allowedDirs.includes(newPoints[index].direction)) {
-                newPoints[index].direction = allowedDirs[0]; // 許可されている最初の選択肢に強制変更
+                newPoints[index].direction = allowedDirs[0];
             }
         }
 
@@ -108,14 +107,59 @@ export default function Home() {
         setPoints(items);
     };
 
+    // 🌟 変更：同名チェックと上書き処理を追加
     const saveCourse = async () => {
         if (!title || points.length === 0) return alert('コース名とピンの配置が必要です！');
+
+        // 入力されたコース名と同じ名前のコースが既に存在するかチェック（現在編集中のものを除く）
+        const existingCourse = courses.find(c => c.title === title && c.id !== editingId);
+        let targetId = editingId;
+
+        if (existingCourse) {
+            const confirmOverwrite = confirm(`「${title}」という名前のコースは既に存在します。\n上書き保存してもよろしいですか？`);
+            if (!confirmOverwrite) return; // キャンセルした場合は処理を中断
+            targetId = existingCourse.id;  // 既存コースのIDをターゲットにする
+        }
+
         setIsSaving(true);
         try {
-            if (editingId) await supabase.from('courses').update({ title, points }).eq('id', editingId);
-            else await supabase.from('courses').insert([{ title, points }]);
-            alert('保存しました！'); fetchCourses();
-        } catch (error) { alert('保存に失敗しました。'); } finally { setIsSaving(false); }
+            if (targetId) {
+                await supabase.from('courses').update({ title, points }).eq('id', targetId);
+                alert('🔄 上書き保存しました！');
+            } else {
+                await supabase.from('courses').insert([{ title, points }]);
+                alert('🎉 新規保存しました！');
+            }
+            fetchCourses();
+
+            // 別のコースに上書きした場合、編集中のIDを更新しておく
+            if (targetId && targetId !== editingId) {
+                setEditingId(targetId);
+            }
+        } catch (error) {
+            alert('保存に失敗しました。');
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
+    // 🌟 追加：コース削除処理
+    const deleteCourse = async () => {
+        if (!editingId) return;
+        const confirmDelete = confirm(`本当にコース「${title}」を削除しますか？\nこの操作は取り消せません。`);
+        if (!confirmDelete) return;
+
+        try {
+            await supabase.from('courses').delete().eq('id', editingId);
+            alert('🗑️ コースを削除しました。');
+            // 状態を初期化して新規作成モードに戻す
+            setEditingId(null);
+            setTitle('');
+            setPoints([]);
+            fetchCourses();
+        } catch (error) {
+            alert('削除に失敗しました。');
+        }
     };
 
     const handleCopyPrompt = () => {
@@ -127,7 +171,6 @@ export default function Home() {
         <div style={{ padding: '20px', maxWidth: '1200px', margin: '0 auto' }}>
             <h1>コマ地図ウォークラリー：コース作成</h1>
 
-            {/* 使い方ガイド（省略せずにそのまま残します） */}
             <div style={{ marginBottom: '20px', backgroundColor: '#fffbe6', border: '1px solid #ffe58f', borderRadius: '8px', overflow: 'hidden' }}>
                 <div onClick={() => setShowInstructions(!showInstructions)} style={{ padding: '12px 15px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#fff1b8', fontWeight: 'bold', color: '#d48806' }}>
                     <span>💡 コース作成の手順とコツ</span><span>{showInstructions ? '▲ 閉じる' : '▼ 開く'}</span>
@@ -148,19 +191,29 @@ export default function Home() {
                             </li>
                             <li><strong>AI用プロンプトを生成：</strong> 「🤖 AI用プロンプトコピー」ボタンを押します。</li>
                             <li><strong>AIに画像を描かせる：</strong> ChatGPT等に貼り付け、出力された <code>&lt;svg&gt;...</code> を各ポイントの一番下の枠に貼り付けます。</li>
-                            <li><strong>保存する：</strong> コース名をつけて保存します。</li>
+                            <li><strong>保存する：</strong> コース名をつけて保存します。<br /><span style={{ fontSize: '13px', color: '#8a5a19' }}>※既存のコースと同じ名前にした場合は、上書き保存されます。</span></li>
                         </ol>
                     </div>
                 )}
             </div>
 
-            <div style={{ display: 'flex', gap: '10px', marginBottom: '20px', padding: '15px', backgroundColor: '#f0f2f5', borderRadius: '8px' }}>
-                <select value={editingId || ''} onChange={handleLoadCourse} style={{ flex: '1', padding: '8px' }}>
+            <div style={{ display: 'flex', gap: '10px', marginBottom: '20px', padding: '15px', backgroundColor: '#f0f2f5', borderRadius: '8px', alignItems: 'center' }}>
+                <select value={editingId || ''} onChange={handleLoadCourse} style={{ flex: '1', padding: '8px', borderRadius: '4px', border: '1px solid #ccc' }}>
                     <option value="">＋ 新規コース作成</option>
                     {courses.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
                 </select>
-                <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="コース名" style={{ flex: '2', padding: '8px' }} />
-                <button onClick={saveCourse} disabled={isSaving} style={{ padding: '8px 24px', backgroundColor: '#1890ff', color: 'white', border: 'none', borderRadius: '4px' }}>保存</button>
+
+                {/* 🌟 削除ボタンを追加（既存コースを開いている時だけ表示） */}
+                {editingId && (
+                    <button onClick={deleteCourse} style={{ padding: '8px 16px', backgroundColor: '#ff4d4f', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>
+                        🗑️ 削除
+                    </button>
+                )}
+
+                <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="コース名" style={{ flex: '2', padding: '8px', borderRadius: '4px', border: '1px solid #ccc' }} />
+                <button onClick={saveCourse} disabled={isSaving} style={{ padding: '8px 24px', backgroundColor: '#1890ff', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>
+                    {isSaving ? '⏳ 保存中...' : '💾 保存'}
+                </button>
             </div>
 
             <div style={{ display: 'flex', gap: '10px', marginBottom: '15px', padding: '15px', backgroundColor: '#e6f7ff', borderRadius: '8px', border: '1px solid #91d5ff' }}>
@@ -171,10 +224,10 @@ export default function Home() {
 
             <div style={{ marginBottom: '15px', display: 'flex', justifyContent: 'space-between' }}>
                 <div>
-                    <button onClick={handleUndo} disabled={points.length === 0} style={{ marginRight: '10px', padding: '8px 16px' }}>↩️ 戻す</button>
-                    <button onClick={handleClear} disabled={points.length === 0} style={{ padding: '8px 16px', color: 'red' }}>🗑️ クリア</button>
+                    <button onClick={handleUndo} disabled={points.length === 0} style={{ marginRight: '10px', padding: '8px 16px', cursor: 'pointer' }}>↩️ 戻す</button>
+                    <button onClick={handleClear} disabled={points.length === 0} style={{ padding: '8px 16px', color: 'red', cursor: 'pointer' }}>🗑️ クリア</button>
                 </div>
-                <button onClick={handleCopyPrompt} style={{ padding: '8px 16px', backgroundColor: '#722ed1', color: 'white', border: 'none', borderRadius: '4px', fontWeight: 'bold' }}>🤖 AI用プロンプトコピー</button>
+                <button onClick={handleCopyPrompt} style={{ padding: '8px 16px', backgroundColor: '#722ed1', color: 'white', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>🤖 AI用プロンプトコピー</button>
             </div>
 
             <div style={{ display: 'flex', gap: '20px' }}>
@@ -190,7 +243,6 @@ export default function Home() {
                                 {(provided) => (
                                     <div {...provided.droppableProps} ref={provided.innerRef} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
                                         {points.map((p, i) => {
-                                            // 🌟 現在の形状で許可されている方向リストを取得
                                             const currentAllowedDirections = VALID_DIRECTIONS[p.intersectionShape || '十字路'] || VALID_DIRECTIONS['その他（詳細設定）'];
 
                                             return (
@@ -199,10 +251,9 @@ export default function Home() {
                                                         <div ref={provided.innerRef} {...provided.draggableProps} style={{ padding: '15px', backgroundColor: snapshot.isDragging ? '#e6f7ff' : '#fff', border: '1px solid #ddd', borderRadius: '8px', ...provided.draggableProps.style }}>
                                                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
                                                                 <div {...provided.dragHandleProps} style={{ cursor: 'grab', fontWeight: 'bold' }}>≡ ポイント {i + 1}</div>
-                                                                <button onClick={() => removePoint(i)} style={{ color: 'red', border: 'none', background: 'none' }}>❌</button>
+                                                                <button onClick={() => removePoint(i)} style={{ color: 'red', border: 'none', background: 'none', cursor: 'pointer' }}>❌</button>
                                                             </div>
 
-                                                            {/* 🌟 変更：形状と方向のプルダウンの順番を入れ替え（形状を先に決めるのが自然なため） */}
                                                             <div style={{ padding: '10px', backgroundColor: '#f0f5ff', borderRadius: '6px', marginBottom: '10px' }}>
                                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
                                                                     <strong style={{ whiteSpace: 'nowrap' }}>🗺️ 形状:</strong>
@@ -213,20 +264,18 @@ export default function Home() {
 
                                                                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '10px' }}>
                                                                     <strong style={{ whiteSpace: 'nowrap' }}>➡️ 指示:</strong>
-                                                                    {/* 🌟 変更：選択肢を currentAllowedDirections で制限する */}
                                                                     <select value={p.direction} onChange={(e) => updatePoint(i, 'direction', e.target.value)} style={{ padding: '6px', width: '120px', borderRadius: '4px', border: '1px solid #ccc' }}>
                                                                         {currentAllowedDirections.map(opt => <option key={opt} value={opt}>{opt}</option>)}
                                                                     </select>
                                                                     <input type="text" value={p.instruction} onChange={(e) => updatePoint(i, 'instruction', e.target.value)} placeholder="例：看板を右" style={{ flex: '1', padding: '6px', borderRadius: '4px', border: '1px solid #ccc' }} />
                                                                 </div>
 
-                                                                {/* 詳細設定の時計UI */}
                                                                 {p.intersectionShape === 'その他（詳細設定）' && (
                                                                     <div style={{ padding: '10px', backgroundColor: '#fff', border: '1px solid #bae0ff', borderRadius: '6px', marginTop: '10px' }}>
                                                                         <p style={{ margin: '0 0 5px 0', fontSize: '12px', color: '#666' }}>🕒 道がある方角にチェック（6時は固定）</p>
                                                                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '10px' }}>
                                                                             {[7, 8, 9, 10, 11, 12, 1, 2, 3, 4, 5].map(hour => (
-                                                                                <label key={hour} style={{ fontSize: '13px', display: 'flex', alignItems: 'center', gap: '2px' }}>
+                                                                                <label key={hour} style={{ fontSize: '13px', display: 'flex', alignItems: 'center', gap: '2px', cursor: 'pointer' }}>
                                                                                     <input type="checkbox" checked={(p.clockPositions || []).includes(hour)} onChange={() => toggleClockPosition(i, hour)} />
                                                                                     {hour}時
                                                                                 </label>
@@ -234,7 +283,7 @@ export default function Home() {
                                                                         </div>
                                                                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                                                                             <strong style={{ fontSize: '13px' }}>🎯 進む方向:</strong>
-                                                                            <select value={p.correctClock || 12} onChange={(e) => updatePoint(i, 'correctClock', Number(e.target.value))} style={{ padding: '4px' }}>
+                                                                            <select value={p.correctClock || 12} onChange={(e) => updatePoint(i, 'correctClock', Number(e.target.value))} style={{ padding: '4px', borderRadius: '4px', border: '1px solid #ccc' }}>
                                                                                 {(p.clockPositions || []).length === 0 && <option value={12}>道を選択してください</option>}
                                                                                 {(p.clockPositions || []).map(h => <option key={h} value={h}>{h}時へ進む</option>)}
                                                                             </select>
