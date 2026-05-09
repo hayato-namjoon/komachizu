@@ -1,58 +1,72 @@
 // utils/promptGenerator.ts
 
-type Point = { lat: number; lng: number; instruction: string; direction: string };
+// 🌟 型に新しいプロパティを追加
+export type Point = {
+    lat: number; lng: number; instruction: string; direction: string; svgCode?: string;
+    intersectionShape?: string; // 交差点の形状（十字路、Y字路など）
+    clockPositions?: number[];  // その他を選んだ場合の、道が存在する方角（例: [10, 2]）
+    correctClock?: number;      // その他を選んだ場合の、正解の方角（例: 2）
+    customNote?: string;        // AIへの補足指示
+};
 
-// 🌟 2つの座標から方角（北、北東など8方位）を計算する関数
 function getBearing(lat1: number, lng1: number, lat2: number, lng2: number): string {
-    const dy = lat2 - lat1;
-    const dx = lng2 - lng1;
-    // 角度を計算（北を0度として時計回り）
+    const dy = lat2 - lat1; const dx = lng2 - lng1;
     let theta = Math.atan2(dx, dy) * (180 / Math.PI);
     if (theta < 0) theta += 360;
-
     const directions = ['北', '北東', '東', '南東', '南', '南西', '西', '北西', '北'];
-    const index = Math.round(theta / 45);
-    return directions[index];
+    return directions[Math.round(theta / 45)];
 }
 
-// 🌟 AIに渡すプロンプトを組み立てる関数
+// 🌟 交差点の形を、AIがわかる「時計の指示」に変換する関数
+function getShapePrompt(point: Point): string {
+    const shape = point.intersectionShape || '十字路';
+
+    if (shape === 'その他（詳細設定）') {
+        const roads = point.clockPositions || [12];
+        const correct = point.correctClock || roads[0];
+        return `中心(50,50)から ${roads.join('時、')}時、6時 の方向に黒い道を引いてください。そして、${correct}時の方向へ向かって赤い矢印を描いてください。`;
+    }
+
+    switch (shape) {
+        case '十字路': return '中心(50,50)から 12時、3時、6時、9時 の4方向に黒い道を引いてください（完全な十字）。';
+        case 'Y字路': return '中心(50,50)から 10時、2時、6時 の3方向に黒い道を引いてください（左右対称のY字）。';
+        case 'T字路（突き当たり）': return '中心(50,50)から 9時、3時、6時 の3方向に黒い道を引いてください（12時の方向には道がありません）。';
+        case 'ト字路（右分岐）': return '中心(50,50)から 12時、3時、6時 の3方向に黒い道を引いてください（9時の方向には道がありません）。';
+        case '逆ト字路（左分岐）': return '中心(50,50)から 12時、9時、6時 の3方向に黒い道を引いてください（3時の方向には道がありません）。';
+        default: return '中心(50,50)から 12時と6時 の2方向へ黒い直線を引いてください（一本道）。';
+    }
+}
+
 export function generateAIPrompt(courseTitle: string, points: Point[]): string {
-    // 📝 ここがAIへの「全体への指示（システムプロンプト）」です。後から自由に変更してください。
-    const basePrompt = `
-あなたはプロのオリエンテーリング地図製作者です。
-ウォークラリーアプリ「${courseTitle}」で使用する「コマ地図（交差点の略図）」を、ポイントごとにSVGコードで出力してください。
+    const basePrompt = `あなたはプロのオリエンテーリング地図製作者です。
+ウォークラリーアプリで使用する「コマ地図（交差点の略図）」をSVGコードで出力してください。
 
-【描画のルール】
-・各画像は、進行方向（進入してくる道）が「画面の下」になる視点で描画してください。
-・道全体を「黒い太線」で描いてください。
-・進むべき正しい方向を「赤い矢印」で強調して描いてください。
-・背景は透過（transparent）にしてください。
-・余計な説明文は省き、SVGコードのみを出力してください。
+【絶対遵守の描画ルール】
+1. viewBoxは "0 0 100 100" 固定。交差点の中心点は必ず (50, 50) とすること。
+2. 進入してくる道は、必ず画面下端 (50, 100) から中心 (50, 50) に向かう太い黒線で描くこと（これが6時の方向です）。
+3. 指定された指示に従って「ハズレの道」も含めたすべての道を黒線で描くこと。
+4. 進むべき正しい退出方向に対してのみ、赤色で目立つ矢印を中心から描画すること。
+5. 背景は透過（transparent）とし、余計な説明文は省きSVGコードのみを出力すること。
 
-以下が各ポイントの交差点の形状と、方角のデータです。
+以下が各ポイントのデータです。
 `;
 
-    // 📝 各ポイントの情報を組み立てる部分です。
     let pointsText = '';
 
     points.forEach((point, index) => {
-        // 最初のポイントと最後のポイント（ゴール）はコマ図が不要な場合が多いためスキップするか判定
         if (index === points.length - 1) return; // ゴールはスキップ
 
-        // どこから来たか（前のポイントから今の方角）※最初の場合は南から来たことにする
-        const enterDirection = index === 0
-            ? '南'
-            : getBearing(points[index - 1].lat, points[index - 1].lng, point.lat, point.lng);
-
-        // どこへ向かうか（今のポイントから次の方角）
+        const enterDirection = index === 0 ? '南' : getBearing(points[index - 1].lat, points[index - 1].lng, point.lat, point.lng);
         const exitDirection = getBearing(point.lat, point.lng, points[index + 1].lat, points[index + 1].lng);
+        const shapePrompt = getShapePrompt(point);
+        const notePrompt = point.customNote ? `\n・【AIへの特別補足】: ${point.customNote}` : '';
 
         pointsText += `
 ---
 【ポイント ${index + 1} のコマ地図】
-・管理者の指示： ${point.direction.split(' ')[0]} ${point.instruction || '指示なし'}
-・現実の進入方角： ${enterDirection}から交差点へ進入（これを画面下として描画）
-・現実の退出方角： ${exitDirection}へ向かって退出
+・交差点の形状と正解ルート: ${shapePrompt}
+・管理者の指示用テキスト: ${point.direction.split(' ')[0]} ${point.instruction || '指示なし'}${notePrompt}
+（※参考: 現実のマップ上では ${enterDirection}から進入し、${exitDirection}へ退出します。ただしSVG内では必ず進入方向を画面下=6時として描画してください）
 `;
     });
 
