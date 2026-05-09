@@ -13,8 +13,6 @@ type Course = { id: string; title: string; points: Point[] };
 
 const DIRECTION_OPTIONS = ['📍 指定なし', '⬆️ 直進', '➡️ 右折', '⬅️ 左折', '↗️ 斜め右', '↖️ 斜め左', '↪️ Uターン', '🏁 ゴール'];
 const SHAPE_OPTIONS = ['十字路', 'Y字路', 'T字路（突き当たり）', 'ト字路（右分岐）', '逆ト字路（左分岐）', 'その他（詳細設定）'];
-
-// 🌟 追加：状態の選択肢
 const POINT_TYPES = ['スタート地点', 'ただの道順', 'チェックポイント', 'ゴール'];
 
 const VALID_DIRECTIONS: Record<string, string[]> = {
@@ -37,6 +35,9 @@ export default function Home() {
     const [searchQuery, setSearchQuery] = useState('');
     const [showInstructions, setShowInstructions] = useState(false);
 
+    // 🌟 追加：一括貼り付け用のテキストエリア状態
+    const [bulkSvgInput, setBulkSvgInput] = useState('');
+
     useEffect(() => {
         setIsBrowser(true);
         fetchCourses();
@@ -50,7 +51,7 @@ export default function Home() {
     const handleSearchLocation = async () => {
         if (!searchQuery) return;
         try {
-            const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery)}`);
+            const res = await fetch(`[https://nominatim.openstreetmap.org/search?format=json&q=$](https://nominatim.openstreetmap.org/search?format=json&q=$){encodeURIComponent(searchQuery)}`);
             const data = await res.json();
             if (data && data.length > 0) setMapCenter([parseFloat(data[0].lat), parseFloat(data[0].lon)]);
         } catch (error) { alert('検索エラーが発生しました。'); }
@@ -67,7 +68,6 @@ export default function Home() {
     };
 
     const handleMapClick = (lat: number, lng: number) => {
-        // 🌟 変更：最初のピンは「スタート地点」、それ以降は「ただの道順」を初期値にする
         const initialType = points.length === 0 ? 'スタート地点' : 'ただの道順';
         setPoints([...points, { lat, lng, instruction: '', direction: '⬆️ 直進', svgCode: '', intersectionShape: '十字路', clockPositions: [12], correctClock: 12, customNote: '', pointType: initialType }]);
     };
@@ -82,7 +82,6 @@ export default function Home() {
                 newPoints[index].direction = allowedDirs[0];
             }
         }
-
         setPoints(newPoints);
     };
 
@@ -104,6 +103,7 @@ export default function Home() {
     const removePoint = (index: number) => { setPoints(points.filter((_, i) => i !== index)); };
     const handleUndo = () => { setPoints(points.slice(0, -1)); };
     const handleClear = () => { if (confirm('本当にクリアしますか？')) setPoints([]); };
+
     const onDragEnd = (result: DropResult) => {
         if (!result.destination) return;
         const items = Array.from(points);
@@ -154,16 +154,44 @@ export default function Home() {
     };
 
     const handleCopyPrompt = () => {
+        if (!title || points.length < 2) return alert('コース名を入力し、ピンを2つ以上打ってください。');
         const promptText = generateAIPrompt(title, points);
-        navigator.clipboard.writeText(promptText).then(() => alert('🤖 プロンプトをコピーしました！'));
+        navigator.clipboard.writeText(promptText).then(() => alert('🤖 プロンプトをコピーしました！AIに貼り付けてください。'));
     };
 
-    // 種類に応じたヘッダー色を返すヘルパー関数
+    // 🌟 追加：SVGの一括反映ロジック
+    const handleApplyBulkSvg = () => {
+        if (!bulkSvgInput.trim()) return alert('AIの回答が貼り付けられていません！');
+
+        // <svg>から</svg>までを正規表現で全て抽出する（改行も含める）
+        const svgRegex = /<svg[\s\S]*?<\/svg>/gi;
+        const matches = bulkSvgInput.match(svgRegex);
+
+        if (!matches || matches.length === 0) {
+            return alert('貼り付けられたテキストの中に、有効なSVGコード（<svg>〜</svg>）が見つかりませんでした。');
+        }
+
+        let matchIndex = 0;
+        const newPoints = points.map(p => {
+            // ゴール以外のポイントに順番に抽出したSVGを割り当てる
+            if (p.pointType !== 'ゴール' && matchIndex < matches.length) {
+                const svgCode = matches[matchIndex];
+                matchIndex++;
+                return { ...p, svgCode };
+            }
+            return p;
+        });
+
+        setPoints(newPoints);
+        setBulkSvgInput(''); // 入力欄をクリア
+        alert(`✨ ${matchIndex}個のSVGデータを各ポイントに自動で振り分けました！`);
+    };
+
     const getHeaderColor = (type?: string) => {
-        if (type === 'スタート地点') return '#1890ff'; // 青
-        if (type === 'ゴール') return '#ff4d4f'; // 赤
-        if (type === 'チェックポイント') return '#faad14'; // オレンジ
-        return '#333'; // デフォルト
+        if (type === 'スタート地点') return '#1890ff';
+        if (type === 'ゴール') return '#ff4d4f';
+        if (type === 'チェックポイント') return '#faad14';
+        return '#333';
     };
 
     return (
@@ -180,8 +208,9 @@ export default function Home() {
                             <li><strong>マップにピンを打つ：</strong> 地図上をクリックしてルートを作成します。</li>
                             <li><strong>各地点の「状態」を選ぶ：</strong> スタート、ただの道順、チェックポイント、ゴールをプルダウンから設定します。</li>
                             <li><strong>交差点の形状を設定する：</strong> 右側のリストから、交差点の形を選びます。</li>
-                            <li><strong>AI用プロンプトを生成：</strong> 「🤖 AI用プロンプトコピー」ボタンを押します。</li>
-                            <li><strong>AIに画像を描かせる：</strong> ChatGPT等に貼り付け、出力されたSVGを枠に貼り付けます。</li>
+                            <li><strong>AI用プロンプトを生成：</strong> 「🤖 1. AI用プロンプトコピー」ボタンを押します。</li>
+                            <li><strong>AIに画像を描かせる：</strong> ChatGPT等に貼り付けます。</li>
+                            <li><strong>SVGを一括反映する：</strong> 出力された回答をそのまま紫色のテキストエリアに貼り付け、「✨ 3. 一括自動振り分け」ボタンを押します。</li>
                             <li><strong>保存する：</strong> コース名をつけて保存します。</li>
                         </ol>
                     </div>
@@ -202,29 +231,50 @@ export default function Home() {
                 </button>
             </div>
 
-            <div style={{ display: 'flex', gap: '10px', marginBottom: '15px', padding: '15px', backgroundColor: '#e6f7ff', borderRadius: '8px', border: '1px solid #91d5ff' }}>
-                <strong style={{ display: 'flex', alignItems: 'center', whiteSpace: 'nowrap' }}>🔍 地図を移動:</strong>
-                <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearchLocation()} placeholder="都道府県、市区町村、または郵便番号" style={{ flex: '1', padding: '8px', borderRadius: '4px', border: '1px solid #91d5ff' }} />
-                <button onClick={handleSearchLocation} style={{ padding: '8px 16px', backgroundColor: '#1890ff', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>ジャンプ 🚀</button>
-            </div>
 
-            <div style={{ marginBottom: '15px', display: 'flex', justifyContent: 'space-between' }}>
-                <div>
-                    <button onClick={handleUndo} disabled={points.length === 0} style={{ marginRight: '10px', padding: '8px 16px', cursor: 'pointer' }}>↩️ 戻す</button>
-                    <button onClick={handleClear} disabled={points.length === 0} style={{ padding: '8px 16px', color: 'red', cursor: 'pointer' }}>🗑️ クリア</button>
+            <div style={{ marginBottom: '20px', padding: '20px', backgroundColor: '#f9f0ff', border: '2px solid #d3adf7', borderRadius: '12px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
+                    <h3 style={{ margin: 0, color: '#531dab', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        🤖 AI連携エリア（コマ地図画像の一括生成）
+                    </h3>
+                    <div>
+                        <button onClick={handleUndo} disabled={points.length === 0} style={{ marginRight: '10px', padding: '8px 16px', cursor: 'pointer', borderRadius: '4px', border: '1px solid #ccc', backgroundColor: '#fff' }}>↩️ 戻す</button>
+                        <button onClick={handleClear} disabled={points.length === 0} style={{ padding: '8px 16px', color: 'red', cursor: 'pointer', borderRadius: '4px', border: '1px solid #ffccc7', backgroundColor: '#fff2f0' }}>🗑️ クリア</button>
+                    </div>
                 </div>
-                <button onClick={handleCopyPrompt} style={{ padding: '8px 16px', backgroundColor: '#722ed1', color: 'white', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>🤖 AI用プロンプトコピー</button>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    <button onClick={handleCopyPrompt} style={{ padding: '12px', backgroundColor: '#722ed1', color: 'white', border: 'none', borderRadius: '6px', fontWeight: 'bold', fontSize: '16px', cursor: 'pointer', boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }}>
+                        1. 📋 AI用プロンプトをコピーする
+                    </button>
+
+                    <textarea
+                        value={bulkSvgInput}
+                        onChange={(e) => setBulkSvgInput(e.target.value)}
+                        placeholder="2. ChatGPT等が出力した回答（複数のSVGコードが含まれたテキスト）を、ここにまるごと貼り付けてください。"
+                        style={{ width: '100%', height: '100px', padding: '12px', borderRadius: '6px', border: '1px solid #d3adf7', fontFamily: 'monospace', fontSize: '14px', resize: 'vertical' }}
+                    />
+
+                    <button onClick={handleApplyBulkSvg} style={{ padding: '12px', backgroundColor: '#eb2f96', color: 'white', border: 'none', borderRadius: '6px', fontWeight: 'bold', fontSize: '16px', cursor: 'pointer', boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }}>
+                        3. ✨ コピーしたSVGを各ポイントに一括流し込み！
+                    </button>
+                </div>
             </div>
 
             <div style={{ display: 'flex', gap: '20px' }}>
                 <div style={{ flex: '1', border: '2px solid #ccc', borderRadius: '8px', overflow: 'hidden' }}>
-                    <Map points={points} onMapClick={handleMapClick} center={mapCenter} />
+                    <div style={{ padding: '10px', backgroundColor: '#e6f7ff', borderBottom: '1px solid #91d5ff', display: 'flex', gap: '10px' }}>
+                        <strong style={{ display: 'flex', alignItems: 'center', whiteSpace: 'nowrap' }}>🔍 地図を移動:</strong>
+                        <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearchLocation()} placeholder="都道府県、市区町村、または郵便番号" style={{ flex: '1', padding: '8px', borderRadius: '4px', border: '1px solid #91d5ff' }} />
+                        <button onClick={handleSearchLocation} style={{ padding: '8px 16px', backgroundColor: '#1890ff', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>ジャンプ</button>
+                    </div>
+                    <Map center="{mapCenter}" onMapClick="{handleMapClick}" points="{points}" />
                 </div>
 
-                <div style={{ width: '450px', padding: '15px', border: '1px solid #ddd', borderRadius: '8px', backgroundColor: '#f9f9f9', maxHeight: '600px', overflowY: 'auto' }}>
+                <div style={{ width: '450px', padding: '15px', border: '1px solid #ddd', borderRadius: '8px', backgroundColor: '#f9f9f9', maxHeight: '700px', overflowY: 'auto' }}>
                     <h3 style={{ marginTop: 0 }}>📍 チェックポイント一覧</h3>
                     {isBrowser && (
-                        <DragDropContext onDragEnd={onDragEnd}>
+                        <DragDropContext onDragEnd="{onDragEnd}">
                             <Droppable droppableId="point-list">
                                 {(provided) => (
                                     <div {...provided.droppableProps} ref={provided.innerRef} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
@@ -232,19 +282,17 @@ export default function Home() {
                                             const currentAllowedDirections = VALID_DIRECTIONS[p.intersectionShape || '十字路'] || VALID_DIRECTIONS['その他（詳細設定）'];
 
                                             return (
-                                                <Draggable key={`point-${i}`} draggableId={`point-${i}`} index={i}>
+                                                <Draggable draggableId="{`point-${i}`}" index="{i}" key="{`point-${i}`}">
                                                     {(provided, snapshot) => (
                                                         <div ref={provided.innerRef} {...provided.draggableProps} style={{ padding: '15px', backgroundColor: snapshot.isDragging ? '#e6f7ff' : '#fff', border: '1px solid #ddd', borderRadius: '8px', ...provided.draggableProps.style }}>
 
                                                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-                                                                {/* 🌟 変更：状態によってヘッダーの色を変えて見やすくする */}
                                                                 <div {...provided.dragHandleProps} style={{ cursor: 'grab', fontWeight: 'bold', color: getHeaderColor(p.pointType) }}>
                                                                     ≡ ポイント {i + 1} {p.pointType ? `(${p.pointType})` : ''}
                                                                 </div>
                                                                 <button onClick={() => removePoint(i)} style={{ color: 'red', border: 'none', background: 'none', cursor: 'pointer' }}>❌</button>
                                                             </div>
 
-                                                            {/* 🌟 追加：ポイントの状態を選択するプルダウン */}
                                                             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '15px', padding: '8px', backgroundColor: '#f6ffed', border: '1px solid #b7eb8f', borderRadius: '6px' }}>
                                                                 <strong style={{ whiteSpace: 'nowrap', color: '#52c41a' }}>🚩 役割:</strong>
                                                                 <select
@@ -296,7 +344,7 @@ export default function Home() {
                                                                 <input type="text" value={p.customNote || ''} onChange={(e) => updatePoint(i, 'customNote', e.target.value)} placeholder="AIへの補足（例: 中央に丸い花壇がある）" style={{ width: '100%', padding: '6px', marginTop: '8px', fontSize: '12px', borderRadius: '4px', border: '1px solid #ccc' }} />
                                                             </div>
 
-                                                            <textarea value={p.svgCode || ''} onChange={(e) => updatePoint(i, 'svgCode', e.target.value)} placeholder="AIが生成したSVGコード（<svg>...</svg>）をここに貼り付け" style={{ width: '100%', padding: '8px', border: '1px solid #ccc', borderRadius: '4px', height: '60px', fontFamily: 'monospace', fontSize: '12px' }} />
+                                                            <textarea value={p.svgCode || ''} onChange={(e) => updatePoint(i, 'svgCode', e.target.value)} placeholder="※一括流し込みで自動入力されます" style={{ width: '100%', padding: '8px', border: '1px solid #ccc', borderRadius: '4px', height: '60px', fontFamily: 'monospace', fontSize: '12px' }} />
                                                         </div>
                                                     )}
                                                 </Draggable>
