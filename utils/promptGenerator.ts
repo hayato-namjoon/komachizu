@@ -1,11 +1,13 @@
 // utils/promptGenerator.ts
 
+// 🌟 変更：pointType（地点の種類）を追加
 export type Point = {
     lat: number; lng: number; instruction: string; direction: string; svgCode?: string;
     intersectionShape?: string;
     clockPositions?: number[];
     correctClock?: number;
     customNote?: string;
+    pointType?: string;
 };
 
 function getBearing(lat1: number, lng1: number, lat2: number, lng2: number): string {
@@ -16,7 +18,6 @@ function getBearing(lat1: number, lng1: number, lat2: number, lng2: number): str
     return directions[Math.round(theta / 45)];
 }
 
-// 🌟 変更：絵文字から「正解の時計の向き」を算出し、プロンプトに直接埋め込む
 function getShapePrompt(point: Point): string {
     const shape = point.intersectionShape || '十字路';
     const dirEmoji = point.direction.split(' ')[0];
@@ -27,7 +28,6 @@ function getShapePrompt(point: Point): string {
         return `中心(50,50)から ${roads.join('時、')}時、6時 の方向に黒い道を引いてください。そして、${correct}時の方向へ向かって赤い矢印を描いてください。`;
     }
 
-    // 絵文字を時計の向きに変換
     let targetClock = 12;
     if (dirEmoji === '➡️') targetClock = 3;
     if (dirEmoji === '⬅️') targetClock = 9;
@@ -38,7 +38,6 @@ function getShapePrompt(point: Point): string {
     switch (shape) {
         case '十字路': return `中心(50,50)から 12時、3時、6時、9時 の4方向に黒い道を引いてください。そして、${targetClock}時の方向へ向かって赤い矢印を描いてください。`;
         case 'Y字路':
-            // Y字路の場合、右なら2時、左なら10時とする
             const yClock = (dirEmoji === '➡️' || dirEmoji === '↗️') ? 2 : ((dirEmoji === '⬅️' || dirEmoji === '↖️') ? 10 : targetClock);
             return `中心(50,50)から 10時、2時、6時 の3方向に黒い道を引いてください。そして、${yClock}時の方向へ向かって赤い矢印を描いてください。`;
         case 'T字路（突き当たり）': return `中心(50,50)から 9時、3時、6時 の3方向に黒い道を引いてください（12時には道なし）。そして、${targetClock}時の方向へ向かって赤い矢印を描いてください。`;
@@ -65,16 +64,18 @@ export function generateAIPrompt(courseTitle: string, points: Point[]): string {
     let pointsText = '';
 
     points.forEach((point, index) => {
-        if (index === points.length - 1) return; // ゴールはスキップ
+        // 🌟 変更：ゴール地点はコマ地図が不要なのでAIへの指示から除外する
+        if (point.pointType === 'ゴール' || index === points.length - 1) return;
 
         const enterDirection = index === 0 ? '南' : getBearing(points[index - 1].lat, points[index - 1].lng, point.lat, point.lng);
         const exitDirection = getBearing(point.lat, point.lng, points[index + 1].lat, points[index + 1].lng);
         const shapePrompt = getShapePrompt(point);
         const notePrompt = point.customNote ? `\n・【AIへの特別補足】: ${point.customNote}` : '';
+        const pType = point.pointType || 'ただの道順';
 
         pointsText += `
 ---
-【ポイント ${index + 1} のコマ地図】
+【ポイント ${index + 1} のコマ地図】（種類: ${pType}）
 ・交差点の形状と正解ルート: ${shapePrompt}
 ・管理者の補足: ${point.instruction || 'なし'}${notePrompt}
 （※参考: 現実では ${enterDirection}から進入し、${exitDirection}へ退出しますが、SVG内では必ず進入方向を画面下=6時として描画してください）
