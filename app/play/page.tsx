@@ -4,8 +4,8 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../utils/supabase';
 
-// 🌟 変更: svgCode を型に追加
-type Point = { lat: number; lng: number; instruction: string; direction: string; svgCode?: string };
+// 🌟 変更: pointType を型に追加
+type Point = { lat: number; lng: number; instruction: string; direction: string; svgCode?: string; pointType?: string };
 type Course = { id: string; title: string; points: Point[] };
 
 function getDistance(lat1: number, lon1: number, lat2: number, lon2: number) {
@@ -71,7 +71,13 @@ export default function PlayPage() {
             setDistanceToTarget(dist);
 
             if (dist < 20 && currentIndex < selectedCourse.points.length - 1) {
-                alert('📍 チェックポイントに到着しました！次の指示へ進みます。');
+                // 🌟 変更：チェックポイントやゴールに着いた時はアラートの文言を少し豪華にする
+                const nextType = selectedCourse.points[currentIndex + 1].pointType;
+                const arrivalMsg = nextType === 'ゴール' ? '🏁 ついにゴール地点に到着しました！' :
+                    nextType === 'チェックポイント' ? '🚩 チェックポイントに到着しました！' :
+                        '📍 ポイントに到着しました！次の指示へ進みます。';
+
+                alert(arrivalMsg);
                 setCurrentIndex((prev) => prev + 1);
             }
         }
@@ -110,6 +116,28 @@ export default function PlayPage() {
     const isLast = currentIndex === selectedCourse.points.length - 1;
     const emoji = currentPoint.direction.split(' ')[0];
 
+    // 🌟 状態（pointType）の取得（過去のデータで未設定の場合は自動判定）
+    const pType = currentPoint.pointType || (isFirst ? 'スタート地点' : isLast ? 'ゴール' : 'ただの道順');
+
+    // 🌟 状態に応じたカラーテーマの設定
+    let themeColor = '#1890ff'; // デフォルト（青）
+    let bgColor = '#e6f7ff';
+    let borderColor = '#91d5ff';
+
+    if (pType === 'ただの道順') {
+        themeColor = '#595959'; // グレー
+        bgColor = '#f5f5f5';
+        borderColor = '#d9d9d9';
+    } else if (pType === 'チェックポイント') {
+        themeColor = '#faad14'; // オレンジ
+        bgColor = '#fffbe6';
+        borderColor = '#ffe58f';
+    } else if (pType === 'ゴール') {
+        themeColor = '#f5222d'; // 赤
+        bgColor = '#fff1f0';
+        borderColor = '#ffa39e';
+    }
+
     const nextPoint = () => { if (!isLast) setCurrentIndex(currentIndex + 1); };
     const prevPoint = () => { if (!isFirst) setCurrentIndex(currentIndex - 1); };
 
@@ -118,7 +146,7 @@ export default function PlayPage() {
 
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
                 <button onClick={() => setSelectedCourse(null)} style={{ padding: '8px 12px', background: 'none', border: '1px solid #ccc', borderRadius: '8px', cursor: 'pointer' }}>
-                    ↩️ 戻る
+                    ↩️ コース選択へ
                 </button>
                 <div style={{ fontWeight: 'bold', color: '#666' }}>
                     ポイント {currentIndex + 1} / {selectedCourse.points.length}
@@ -139,31 +167,43 @@ export default function PlayPage() {
 
             <h2 style={{ textAlign: 'center', marginTop: 0, color: '#333' }}>{selectedCourse.title}</h2>
 
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', backgroundColor: '#fff', borderRadius: '20px', padding: '40px 20px', margin: '10px 0 20px 0', boxShadow: '0 8px 16px rgba(0,0,0,0.1)', border: '2px solid #bae0ff' }}>
+            {/* 🌟 変更: 状態に応じて背景色と枠線の色が変わる */}
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', backgroundColor: bgColor, borderRadius: '20px', padding: '30px 20px', margin: '10px 0 20px 0', boxShadow: '0 8px 16px rgba(0,0,0,0.1)', border: `3px solid ${borderColor}`, position: 'relative' }}>
 
-                {/* 🌟 変更: SVGコードがあればSVGを、なければ今までの絵文字を表示する */}
-                {currentPoint.svgCode && currentPoint.svgCode.trim() !== '' ? (
+                {/* 🌟 追加: 状態を示すバッジ */}
+                <div style={{ position: 'absolute', top: '-15px', backgroundColor: themeColor, color: 'white', padding: '5px 20px', borderRadius: '20px', fontWeight: 'bold', fontSize: '14px', boxShadow: '0 2px 4px rgba(0,0,0,0.2)' }}>
+                    {pType === 'スタート地点' ? '🏁 スタート' :
+                        pType === 'チェックポイント' ? '🚩 チェックポイント' :
+                            pType === 'ゴール' ? '🏆 ゴール！' : '🚶 道順'}
+                </div>
+
+                {pType === 'ゴール' && (!currentPoint.svgCode || currentPoint.svgCode.trim() === '') ? (
+                    // ゴール地点でSVGがない場合はトロフィーを表示
+                    <div style={{ fontSize: '120px', lineHeight: '1', marginBottom: '20px', filter: 'drop-shadow(0px 4px 4px rgba(0,0,0,0.2))' }}>🏆</div>
+                ) : currentPoint.svgCode && currentPoint.svgCode.trim() !== '' ? (
+                    // SVGがある場合はSVGを表示
                     <div
                         style={{ width: '100%', maxWidth: '250px', display: 'flex', justifyContent: 'center', marginBottom: '20px' }}
                         dangerouslySetInnerHTML={{ __html: currentPoint.svgCode }}
                     />
                 ) : (
+                    // それ以外は絵文字
                     <div style={{ fontSize: '100px', lineHeight: '1', marginBottom: '20px', filter: 'drop-shadow(0px 4px 4px rgba(0,0,0,0.2))' }}>
                         {currentPoint.direction === '📍 指定なし' ? '📍' : emoji}
                     </div>
                 )}
 
                 <div style={{ fontSize: '24px', fontWeight: 'bold', textAlign: 'center', color: '#333' }}>
-                    {currentPoint.instruction || '道なりに進む'}
+                    {currentPoint.instruction || (pType === 'ゴール' ? 'お疲れ様でした！' : '道なりに進む')}
                 </div>
             </div>
 
             <div style={{ display: 'flex', gap: '15px', marginTop: 'auto' }}>
                 <button onClick={prevPoint} disabled={isFirst} style={{ flex: 1, padding: '15px', fontSize: '16px', borderRadius: '12px', border: 'none', backgroundColor: isFirst ? '#f0f0f0' : '#e6f7ff', color: isFirst ? '#999' : '#1890ff', cursor: isFirst ? 'not-allowed' : 'pointer' }}>◀ 前へ</button>
                 {isLast ? (
-                    <button onClick={() => alert('🎉 ゴールおめでとうございます！！')} style={{ flex: 1, padding: '15px', fontSize: '18px', fontWeight: 'bold', borderRadius: '12px', border: 'none', backgroundColor: '#ff4d4f', color: 'white', cursor: 'pointer' }}>🏁 ゴール！</button>
+                    <button onClick={() => alert('🎉 ゴールおめでとうございます！！')} style={{ flex: 1, padding: '15px', fontSize: '18px', fontWeight: 'bold', borderRadius: '12px', border: 'none', backgroundColor: '#ff4d4f', color: 'white', cursor: 'pointer' }}>🏁 クリア！</button>
                 ) : (
-                    <button onClick={nextPoint} style={{ flex: 2, padding: '15px', fontSize: '18px', fontWeight: 'bold', borderRadius: '12px', border: 'none', backgroundColor: '#1890ff', color: 'white', cursor: 'pointer' }}>次へ進む ▶</button>
+                    <button onClick={nextPoint} style={{ flex: 2, padding: '15px', fontSize: '18px', fontWeight: 'bold', borderRadius: '12px', border: 'none', backgroundColor: themeColor, color: 'white', cursor: 'pointer' }}>次へ進む ▶</button>
                 )}
             </div>
         </div>
