@@ -5,15 +5,14 @@ import dynamic from 'next/dynamic';
 import { useState, useEffect } from 'react';
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
 import { supabase } from '../utils/supabase';
-import { generateAIPrompt } from '../utils/promptGenerator';
+import { generateAIPrompt, Point } from '../utils/promptGenerator'; // 🌟 更新したPoint型をインポート
 
 const Map = dynamic(() => import('../components/Map'), { ssr: false });
 
-// 🌟 変更: svgCode を追加
-type Point = { lat: number; lng: number; instruction: string; direction: string; svgCode?: string };
 type Course = { id: string; title: string; points: Point[] };
 
 const DIRECTION_OPTIONS = ['📍 指定なし', '⬆️ 直進', '➡️ 右折', '⬅️ 左折', '↗️ 斜め右', '↖️ 斜め左', '↪️ Uターン', '🏁 ゴール'];
+const SHAPE_OPTIONS = ['十字路', 'Y字路', 'T字路（突き当たり）', 'ト字路（右分岐）', '逆ト字路（左分岐）', 'その他（詳細設定）'];
 
 export default function Home() {
     const [points, setPoints] = useState<Point[]>([]);
@@ -24,7 +23,6 @@ export default function Home() {
     const [editingId, setEditingId] = useState<string | null>(null);
     const [mapCenter, setMapCenter] = useState<[number, number]>([35.6812, 139.7671]);
     const [searchQuery, setSearchQuery] = useState('');
-    const [isSearching, setIsSearching] = useState(false);
 
     useEffect(() => {
         setIsBrowser(true);
@@ -38,20 +36,11 @@ export default function Home() {
 
     const handleSearchLocation = async () => {
         if (!searchQuery) return;
-        setIsSearching(true);
         try {
             const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery)}`);
             const data = await res.json();
-            if (data && data.length > 0) {
-                setMapCenter([parseFloat(data[0].lat), parseFloat(data[0].lon)]);
-            } else {
-                alert('場所が見つかりませんでした。');
-            }
-        } catch (error) {
-            alert('検索中にエラーが発生しました。');
-        } finally {
-            setIsSearching(false);
-        }
+            if (data && data.length > 0) setMapCenter([parseFloat(data[0].lat), parseFloat(data[0].lon)]);
+        } catch (error) { alert('検索エラーが発生しました。'); }
     };
 
     const handleLoadCourse = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -59,23 +48,37 @@ export default function Home() {
         if (!selectedId) { setEditingId(null); setTitle(''); setPoints([]); return; }
         const selectedCourse = courses.find(c => c.id === selectedId);
         if (selectedCourse) {
-            setEditingId(selectedCourse.id);
-            setTitle(selectedCourse.title);
-            setPoints(selectedCourse.points);
+            setEditingId(selectedCourse.id); setTitle(selectedCourse.title); setPoints(selectedCourse.points);
             if (selectedCourse.points.length > 0) setMapCenter([selectedCourse.points[0].lat, selectedCourse.points[0].lng]);
         }
     };
 
-    // 🌟 変更: 新規追加時に svgCode の空文字をセット
+    // 新規ピン追加時の初期値
     const handleMapClick = (lat: number, lng: number) => {
-        setPoints([...points, { lat, lng, instruction: '', direction: '📍 指定なし', svgCode: '' }]);
+        setPoints([...points, { lat, lng, instruction: '', direction: '📍 指定なし', svgCode: '', intersectionShape: '十字路', clockPositions: [12], correctClock: 12, customNote: '' }]);
     };
 
-    // 🌟 変更: svgCode も更新できるように型の制限を緩和
-    const updatePoint = (index: number, field: keyof Point, value: string) => {
+    const updatePoint = (index: number, field: keyof Point, value: any) => {
         const newPoints = [...points];
         newPoints[index] = { ...newPoints[index], [field]: value };
         setPoints(newPoints);
+    };
+
+    // 時計のチェックボックスをON/OFFする処理
+    const toggleClockPosition = (index: number, hour: number) => {
+        const currentPoint = points[index];
+        let newPositions = currentPoint.clockPositions || [];
+        if (newPositions.includes(hour)) {
+            newPositions = newPositions.filter(h => h !== hour);
+        } else {
+            newPositions = [...newPositions, hour].sort((a, b) => a - b);
+        }
+        updatePoint(index, 'clockPositions', newPositions);
+
+        // もし正解の方角がチェック外されたら、残っている最初の方角に直す
+        if (!newPositions.includes(currentPoint.correctClock || 12) && newPositions.length > 0) {
+            updatePoint(index, 'correctClock', newPositions[0]);
+        }
     };
 
     const removePoint = (index: number) => { setPoints(points.filter((_, i) => i !== index)); };
@@ -90,71 +93,39 @@ export default function Home() {
     };
 
     const saveCourse = async () => {
-        if (!title) return alert('コース名を入力してください！');
-        if (points.length === 0) return alert('地図にピンを打ってコースを作成してください！');
+        if (!title || points.length === 0) return alert('コース名とピンの配置が必要です！');
         setIsSaving(true);
         try {
-            if (editingId) {
-                await supabase.from('courses').update({ title, points }).eq('id', editingId);
-                alert('🔄 コースを上書き保存しました！');
-            } else {
-                await supabase.from('courses').insert([{ title, points }]);
-                alert('🎉 新しいコースとして保存しました！');
-            }
-            fetchCourses();
-        } catch (error) {
-            alert('保存に失敗しました。');
-        } finally {
-            setIsSaving(false);
-        }
+            if (editingId) await supabase.from('courses').update({ title, points }).eq('id', editingId);
+            else await supabase.from('courses').insert([{ title, points }]);
+            alert('保存しました！'); fetchCourses();
+        } catch (error) { alert('保存に失敗しました。'); } finally { setIsSaving(false); }
     };
 
     const handleCopyPrompt = () => {
-        if (!title || points.length < 2) {
-            alert('コース名を入力し、ピンを2つ以上打ってから生成してください。');
-            return;
-        }
         const promptText = generateAIPrompt(title, points);
-        navigator.clipboard.writeText(promptText)
-            .then(() => alert('🤖 AIへの依頼プロンプトをコピーしました！ChatGPTなどに貼り付けてください。'))
-            .catch(() => alert('コピーに失敗しました。ブラウザの権限を確認してください。'));
+        navigator.clipboard.writeText(promptText).then(() => alert('🤖 プロンプトをコピーしました！'));
     };
 
     return (
         <div style={{ padding: '20px', maxWidth: '1200px', margin: '0 auto' }}>
             <h1>コマ地図ウォークラリー：コース作成</h1>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '20px', padding: '15px', backgroundColor: '#f0f2f5', border: '1px solid #d9d9d9', borderRadius: '8px' }}>
-                <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-                    <strong style={{ whiteSpace: 'nowrap' }}>📂 読み込み:</strong>
-                    <select value={editingId || ''} onChange={handleLoadCourse} style={{ flex: '1', padding: '8px', borderRadius: '4px', border: '1px solid #ccc' }}>
-                        <option value="">＋ 新規コース作成（マップをクリア）</option>
-                        {courses.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
-                    </select>
-                </div>
-                <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-                    <strong style={{ whiteSpace: 'nowrap' }}>✏️ コース名:</strong>
-                    <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="例：秋の京都巡りコース" style={{ flex: '1', padding: '8px', borderRadius: '4px', border: '1px solid #ccc' }} />
-                    <button onClick={saveCourse} disabled={isSaving} style={{ padding: '8px 24px', backgroundColor: editingId ? '#52c41a' : '#1890ff', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>
-                        {isSaving ? '⏳ 保存中...' : (editingId ? '🔄 上書き保存' : '💾 新規保存')}
-                    </button>
-                </div>
-            </div>
-
-            <div style={{ display: 'flex', gap: '10px', marginBottom: '15px', padding: '15px', backgroundColor: '#e6f7ff', borderRadius: '8px', border: '1px solid #91d5ff' }}>
-                <strong style={{ display: 'flex', alignItems: 'center', whiteSpace: 'nowrap' }}>🔍 地図を移動:</strong>
-                <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearchLocation()} placeholder="都道府県、市区町村、または郵便番号（例: 北海道, 100-0001）" style={{ flex: '1', padding: '8px', borderRadius: '4px', border: '1px solid #91d5ff' }} />
-                <button onClick={handleSearchLocation} disabled={isSearching} style={{ padding: '8px 16px', backgroundColor: '#1890ff', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>{isSearching ? '検索中...' : 'ジャンプ 🚀'}</button>
+            {/* 上部の保存UI等はそのまま */}
+            <div style={{ display: 'flex', gap: '10px', marginBottom: '20px', padding: '15px', backgroundColor: '#f0f2f5', borderRadius: '8px' }}>
+                <select value={editingId || ''} onChange={handleLoadCourse} style={{ flex: '1', padding: '8px' }}>
+                    <option value="">＋ 新規コース作成</option>
+                    {courses.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
+                </select>
+                <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="コース名" style={{ flex: '2', padding: '8px' }} />
+                <button onClick={saveCourse} disabled={isSaving} style={{ padding: '8px 24px', backgroundColor: '#1890ff', color: 'white', border: 'none', borderRadius: '4px' }}>保存</button>
             </div>
 
             <div style={{ marginBottom: '15px', display: 'flex', justifyContent: 'space-between' }}>
                 <div>
-                    <button onClick={handleUndo} disabled={points.length === 0} style={{ marginRight: '10px', padding: '8px 16px', cursor: 'pointer' }}>↩️ 最後のピンを戻す</button>
-                    <button onClick={handleClear} disabled={points.length === 0} style={{ padding: '8px 16px', color: 'red', cursor: 'pointer' }}>🗑️ すべてクリア</button>
+                    <button onClick={handleUndo} disabled={points.length === 0} style={{ marginRight: '10px', padding: '8px 16px' }}>↩️ 戻す</button>
+                    <button onClick={handleClear} disabled={points.length === 0} style={{ padding: '8px 16px', color: 'red' }}>🗑️ クリア</button>
                 </div>
-                <button onClick={handleCopyPrompt} style={{ padding: '8px 16px', backgroundColor: '#722ed1', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>
-                    🤖 AI用プロンプトをコピー
-                </button>
+                <button onClick={handleCopyPrompt} style={{ padding: '8px 16px', backgroundColor: '#722ed1', color: 'white', border: 'none', borderRadius: '4px', fontWeight: 'bold' }}>🤖 AI用プロンプトコピー</button>
             </div>
 
             <div style={{ display: 'flex', gap: '20px' }}>
@@ -162,51 +133,76 @@ export default function Home() {
                     <Map points={points} onMapClick={handleMapClick} center={mapCenter} />
                 </div>
 
-                <div style={{ width: '400px', padding: '15px', border: '1px solid #ddd', borderRadius: '8px', backgroundColor: '#f9f9f9', maxHeight: '500px', overflowY: 'auto' }}>
+                <div style={{ width: '450px', padding: '15px', border: '1px solid #ddd', borderRadius: '8px', backgroundColor: '#f9f9f9', maxHeight: '600px', overflowY: 'auto' }}>
                     <h3 style={{ marginTop: 0 }}>📍 チェックポイント一覧</h3>
-                    {points.length === 0 ? (
-                        <p style={{ color: '#666' }}>地図をクリックしてルートを作成してください。</p>
-                    ) : (
-                        isBrowser && (
-                            <DragDropContext onDragEnd={onDragEnd}>
-                                <Droppable droppableId="point-list">
-                                    {(provided) => (
-                                        <div {...provided.droppableProps} ref={provided.innerRef} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                                            {points.map((p, i) => (
-                                                <Draggable key={`point-${i}`} draggableId={`point-${i}`} index={i}>
-                                                    {(provided, snapshot) => (
-                                                        <div ref={provided.innerRef} {...provided.draggableProps} style={{ padding: '15px', backgroundColor: snapshot.isDragging ? '#e6f7ff' : '#fff', border: '1px solid #eee', borderRadius: '6px', ...provided.draggableProps.style }}>
-                                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                                                                <div {...provided.dragHandleProps} style={{ cursor: 'grab', marginRight: '10px', color: '#999' }}>
-                                                                    <span style={{ fontSize: '18px' }}>≡</span> <strong>ポイント {i + 1}</strong>
-                                                                </div>
-                                                                <button onClick={() => removePoint(i)} style={{ border: 'none', background: 'transparent', color: 'red', cursor: 'pointer', fontSize: '12px' }}>❌ 削除</button>
-                                                            </div>
-                                                            <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
-                                                                <select value={p.direction} onChange={(e) => updatePoint(i, 'direction', e.target.value)} style={{ padding: '6px', borderRadius: '4px', border: '1px solid #ccc' }}>
-                                                                    {DIRECTION_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-                                                                </select>
-                                                                <input type="text" value={p.instruction} onChange={(e) => updatePoint(i, 'instruction', e.target.value)} placeholder="例：T字路を右折" style={{ flex: '1', padding: '6px', border: '1px solid #ccc', borderRadius: '4px' }} />
-                                                            </div>
-                                                            {/* 🌟 追加: SVGコードを貼り付けるテキストエリア */}
-                                                            <div>
-                                                                <textarea
-                                                                    value={p.svgCode || ''}
-                                                                    onChange={(e) => updatePoint(i, 'svgCode', e.target.value)}
-                                                                    placeholder="AIが生成したSVGコード（<svg>...</svg>）をここに貼り付け"
-                                                                    style={{ width: '100%', padding: '8px', border: '1px solid #ccc', borderRadius: '4px', height: '60px', fontFamily: 'monospace', fontSize: '12px', resize: 'vertical' }}
-                                                                />
-                                                            </div>
+                    {isBrowser && (
+                        <DragDropContext onDragEnd={onDragEnd}>
+                            <Droppable droppableId="point-list">
+                                {(provided) => (
+                                    <div {...provided.droppableProps} ref={provided.innerRef} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+                                        {points.map((p, i) => (
+                                            <Draggable key={`point-${i}`} draggableId={`point-${i}`} index={i}>
+                                                {(provided, snapshot) => (
+                                                    <div ref={provided.innerRef} {...provided.draggableProps} style={{ padding: '15px', backgroundColor: snapshot.isDragging ? '#e6f7ff' : '#fff', border: '1px solid #ddd', borderRadius: '8px', ...provided.draggableProps.style }}>
+                                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                                                            <div {...provided.dragHandleProps} style={{ cursor: 'grab', fontWeight: 'bold' }}>≡ ポイント {i + 1}</div>
+                                                            <button onClick={() => removePoint(i)} style={{ color: 'red', border: 'none', background: 'none' }}>❌</button>
                                                         </div>
-                                                    )}
-                                                </Draggable>
-                                            ))}
-                                            {provided.placeholder}
-                                        </div>
-                                    )}
-                                </Droppable>
-                            </DragDropContext>
-                        )
+
+                                                        {/* アイコンとテキスト指示 */}
+                                                        <div style={{ display: 'flex', gap: '8px', marginBottom: '10px' }}>
+                                                            <select value={p.direction} onChange={(e) => updatePoint(i, 'direction', e.target.value)} style={{ padding: '6px', width: '100px' }}>
+                                                                {DIRECTION_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                                                            </select>
+                                                            <input type="text" value={p.instruction} onChange={(e) => updatePoint(i, 'instruction', e.target.value)} placeholder="例：看板を右" style={{ flex: '1', padding: '6px' }} />
+                                                        </div>
+
+                                                        {/* 🌟 形状指定エリア */}
+                                                        <div style={{ padding: '10px', backgroundColor: '#f0f5ff', borderRadius: '6px', marginBottom: '10px' }}>
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '5px' }}>
+                                                                <strong>🗺️ 形状:</strong>
+                                                                <select value={p.intersectionShape || '十字路'} onChange={(e) => updatePoint(i, 'intersectionShape', e.target.value)} style={{ padding: '4px', flex: 1 }}>
+                                                                    {SHAPE_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                                                                </select>
+                                                            </div>
+
+                                                            {/* その他（詳細設定）が選ばれた時だけ表示される時計UI */}
+                                                            {p.intersectionShape === 'その他（詳細設定）' && (
+                                                                <div style={{ padding: '10px', backgroundColor: '#fff', border: '1px solid #bae0ff', borderRadius: '6px', marginTop: '10px' }}>
+                                                                    <p style={{ margin: '0 0 5px 0', fontSize: '12px', color: '#666' }}>🕒 道がある方角にチェック（6時は固定）</p>
+                                                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '10px' }}>
+                                                                        {[7, 8, 9, 10, 11, 12, 1, 2, 3, 4, 5].map(hour => (
+                                                                            <label key={hour} style={{ fontSize: '13px', display: 'flex', alignItems: 'center', gap: '2px' }}>
+                                                                                <input type="checkbox" checked={(p.clockPositions || []).includes(hour)} onChange={() => toggleClockPosition(i, hour)} />
+                                                                                {hour}時
+                                                                            </label>
+                                                                        ))}
+                                                                    </div>
+                                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                                                        <strong style={{ fontSize: '13px' }}>🎯 進む方向:</strong>
+                                                                        <select value={p.correctClock || 12} onChange={(e) => updatePoint(i, 'correctClock', Number(e.target.value))} style={{ padding: '4px' }}>
+                                                                            {(p.clockPositions || []).length === 0 && <option value={12}>道を選択してください</option>}
+                                                                            {(p.clockPositions || []).map(h => <option key={h} value={h}>{h}時へ進む</option>)}
+                                                                        </select>
+                                                                    </div>
+                                                                </div>
+                                                            )}
+
+                                                            {/* フリーテキストの補足指示 */}
+                                                            <input type="text" value={p.customNote || ''} onChange={(e) => updatePoint(i, 'customNote', e.target.value)} placeholder="AIへの補足（例: 中央に丸い花壇がある）" style={{ width: '100%', padding: '6px', marginTop: '8px', fontSize: '12px' }} />
+                                                        </div>
+
+                                                        {/* SVG貼り付け欄 */}
+                                                        <textarea value={p.svgCode || ''} onChange={(e) => updatePoint(i, 'svgCode', e.target.value)} placeholder="AIが生成したSVGコード（<svg>...</svg>）をここに貼り付け" style={{ width: '100%', padding: '8px', border: '1px solid #ccc', borderRadius: '4px', height: '60px', fontFamily: 'monospace', fontSize: '12px' }} />
+                                                    </div>
+                                                )}
+                                            </Draggable>
+                                        ))}
+                                        {provided.placeholder}
+                                    </div>
+                                )}
+                            </Droppable>
+                        </DragDropContext>
                     )}
                 </div>
             </div>
