@@ -274,7 +274,7 @@ export default function Home() {
                 <div style={{ width: '450px', padding: '15px', border: '1px solid #ddd', borderRadius: '8px', backgroundColor: '#f9f9f9', maxHeight: '700px', overflowY: 'auto' }}>
                     <h3 style={{ marginTop: 0 }}>📍 チェックポイント一覧</h3>
                     {isBrowser && (
-                        <DragDropContext onDragEnd="{onDragEnd}">
+                        <DragDropContext onDragEnd={onDragEnd}>
                             <Droppable droppableId="point-list">
                                 {(provided) => (
                                     <div {...provided.droppableProps} ref={provided.innerRef} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
@@ -282,7 +282,7 @@ export default function Home() {
                                             const currentAllowedDirections = VALID_DIRECTIONS[p.intersectionShape || '十字路'] || VALID_DIRECTIONS['その他（詳細設定）'];
 
                                             return (
-                                                <Draggable draggableId="{`point-${i}`}" index="{i}" key="{`point-${i}`}">
+                                                <Draggable draggableId={`point-${i}`} index={i} key={`point-${i}`}>
                                                     {(provided, snapshot) => (
                                                         <div ref={provided.innerRef} {...provided.draggableProps} style={{ padding: '15px', backgroundColor: snapshot.isDragging ? '#e6f7ff' : '#fff', border: '1px solid #ddd', borderRadius: '8px', ...provided.draggableProps.style }}>
 
