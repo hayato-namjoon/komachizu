@@ -1,6 +1,5 @@
 // utils/promptGenerator.ts
 
-// 🌟 変更：pointType（地点の種類）を追加
 export type Point = {
     lat: number; lng: number; instruction: string; direction: string; svgCode?: string;
     intersectionShape?: string;
@@ -56,7 +55,8 @@ export function generateAIPrompt(courseTitle: string, points: Point[]): string {
 2. 進入してくる道は、必ず画面下端 (50, 100) から中心 (50, 50) に向かう太い黒線で描くこと（これが6時の方向です）。
 3. 指定された指示に従って「ハズレの道」も含めたすべての道を黒線で描くこと。
 4. 進むべき正しい退出方向に対してのみ、赤色で目立つ矢印を中心から描画すること。
-5. 背景は透過（transparent）とし、余計な説明文は省きSVGコードのみを出力すること。
+5. 背景は透過（transparent）とすること。
+6. 【超重要】各ポイントのSVGコードのみを順番に連続して出力してください。AIの挨拶、説明文、ポイント番号（例: "<!-- ポイント 1 -->"）などはアプリのエラーに繋がるため一切不要です。純粋な <svg>〜</svg> のブロックのみを返してください。
 
 以下が各ポイントのデータです。
 `;
@@ -64,7 +64,6 @@ export function generateAIPrompt(courseTitle: string, points: Point[]): string {
     let pointsText = '';
 
     points.forEach((point, index) => {
-        // 🌟 変更：ゴール地点はコマ地図が不要なのでAIへの指示から除外する
         if (point.pointType === 'ゴール' || index === points.length - 1) return;
 
         const enterDirection = index === 0 ? '南' : getBearing(points[index - 1].lat, points[index - 1].lng, point.lat, point.lng);
