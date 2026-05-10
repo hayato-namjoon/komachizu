@@ -5,7 +5,10 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../../utils/supabase';
 
 // 🌟 変更: pointType を型に追加
-type Point = { lat: number; lng: number; instruction: string; direction: string; svgCode?: string; pointType?: string };
+type Point = {
+    lat: number; lng: number; instruction: string; direction: string;
+    svgCode?: string; pointType?: string; radius?: number;
+};
 type Course = { id: string; title: string; points: Point[] };
 
 function getDistance(lat1: number, lon1: number, lat2: number, lon2: number) {
@@ -30,12 +33,25 @@ export default function PlayPage() {
     const [distanceToTarget, setDistanceToTarget] = useState<number | null>(null);
 
     useEffect(() => {
-        const fetchCourses = async () => {
-            const { data } = await supabase.from('courses').select('*').order('created_at', { ascending: false });
-            if (data) setCourses(data);
-        };
-        fetchCourses();
-    }, []);
+        if (currentLoc && selectedCourse) {
+            const target = selectedCourse.points[currentIndex];
+            const dist = getDistance(currentLoc.lat, currentLoc.lng, target.lat, target.lng);
+            setDistanceToTarget(dist);
+
+            // 🌟 変更：ハードコーディングされた 20 ではなく、ポイントごとの radius を使用する
+            const threshold = target.radius || 20; // 設定がない古いデータは20mとする
+
+            if (dist <= threshold && currentIndex < selectedCourse.points.length - 1) {
+                const nextType = selectedCourse.points[currentIndex + 1].pointType;
+                const arrivalMsg = nextType === 'ゴール' ? '🏁 ついにゴール地点に到着しました！' :
+                    nextType === 'チェックポイント' ? '🚩 チェックポイントに到着しました！' :
+                        '📍 ポイントに到着しました！次の指示へ進みます。';
+
+                alert(arrivalMsg);
+                setCurrentIndex((prev) => prev + 1);
+            }
+        }
+    }, [currentLoc, currentIndex, selectedCourse]);
 
     const toggleGps = () => {
         if (isGpsActive) {

@@ -69,7 +69,12 @@ export default function Home() {
 
     const handleMapClick = (lat: number, lng: number) => {
         const initialType = points.length === 0 ? 'スタート地点' : 'ただの道順';
-        setPoints([...points, { lat, lng, instruction: '', direction: '⬆️ 直進', svgCode: '', intersectionShape: '十字路', clockPositions: [12], correctClock: 12, customNote: '', pointType: initialType }]);
+        setPoints([...points, {
+            lat, lng, instruction: '', direction: '⬆️ 直進', svgCode: '',
+            intersectionShape: '十字路', clockPositions: [12], correctClock: 12,
+            customNote: '', pointType: initialType,
+            radius: 20 // 🌟 追加：デフォルトは安全な20mにしておく
+        }]);
     };
 
     const updatePoint = (index: number, field: keyof Point, value: any) => {
@@ -342,6 +347,22 @@ export default function Home() {
                                                                 )}
 
                                                                 <input type="text" value={p.customNote || ''} onChange={(e) => updatePoint(i, 'customNote', e.target.value)} placeholder="AIへの補足（例: 中央に丸い花壇がある）" style={{ width: '100%', padding: '6px', marginTop: '8px', fontSize: '12px', borderRadius: '4px', border: '1px solid #ccc' }} />
+                                                            </div>
+
+                                                            {/* 🌟 追加：到達判定エリアの選択 */}
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '15px', padding: '8px', backgroundColor: '#e6fffb', border: '1px solid #87e8de', borderRadius: '6px' }}>
+                                                                <strong style={{ whiteSpace: 'nowrap', color: '#13c2c2' }}>🎯 到達判定:</strong>
+                                                                <select
+                                                                    value={p.radius || 20}
+                                                                    onChange={(e) => updatePoint(i, 'radius', Number(e.target.value))}
+                                                                    style={{ padding: '6px', flex: 1, borderRadius: '4px', border: '1px solid #ccc', fontWeight: 'bold' }}
+                                                                >
+                                                                    <option value={1}>1m (1m)</option>
+                                                                    <option value={5}>5m (5m)</option>
+                                                                    <option value={10}>10m (10m)</option>
+                                                                    <option value={20}>20m (20m)</option>
+                                                                </select>
+                                                                <span style={{ fontSize: '11px', color: '#666' }}>※スマホのGPS誤差を考慮してください</span>
                                                             </div>
 
                                                             <textarea value={p.svgCode || ''} onChange={(e) => updatePoint(i, 'svgCode', e.target.value)} placeholder="※一括流し込みで自動入力されます" style={{ width: '100%', padding: '8px', border: '1px solid #ccc', borderRadius: '4px', height: '60px', fontFamily: 'monospace', fontSize: '12px' }} />
