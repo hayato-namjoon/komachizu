@@ -9,7 +9,6 @@ export type Point = {
     pointType?: string;
     roadStyle?: 'normal' | 'curve' | 'zigzag';
     noEntryClocks?: number[];
-    // 🌟 追加：到達判定の半径（m）
     radius?: number;
 };
 
@@ -21,7 +20,7 @@ function getBearing(lat1: number, lng1: number, lat2: number, lng2: number): str
     return directions[Math.round(theta / 45)];
 }
 
-function getShapePrompt(point: Point): string {
+function getShapePrompt(point: Point, isStart: boolean): string {
     const shape = point.intersectionShape || '十字路';
     const dirEmoji = point.direction.split(' ')[0];
     const style = point.roadStyle || 'normal';
@@ -34,41 +33,52 @@ function getShapePrompt(point: Point): string {
     if (dirEmoji === '↖️') targetClock = 10;
     if (dirEmoji === '↪️') targetClock = 6;
 
-    // 🌟 道の形の指示
+    // 線の形
     let styleInstruction = '黒い太線（直線）で描いてください。';
     if (style === 'curve') styleInstruction = '滑らかな曲線（ベジェ曲線）で描いてください。';
     if (style === 'zigzag') styleInstruction = 'ギザギザの折れ線（ジグザグ）で描いてください。';
 
-    // 🌟 進入禁止の指示
+    // 進入禁止（横棒）
     const noEntryInstruction = noEntries.length > 0
-        ? `また、${noEntries.join('時、')}時の方向の道の入り口には、進入禁止を示す太い横棒（道路を塞ぐような短い線）を描いてください。`
+        ? `また、${noEntries.join('時、')}時の方向の道の入り口には、進入禁止を示す太い横棒（道路を塞ぐ短い線）を描いてください。`
         : '';
 
-    if (shape === 'その他（詳細設定）') {
-        const roads = point.clockPositions || [12];
-        const correct = point.correctClock || roads[0];
-        const arrowInst = correct === 6
-            ? '中心付近でぐるっとUターンして6時の方向へ戻る赤い矢印を描いてください。'
-            : `${correct}時の方向へ向かって赤い矢印を描いてください。`;
-        return `中心(50,50)から ${roads.join('時、')}時、6時 の方向に道を、${styleInstruction}${noEntryInstruction}${arrowInst}`;
-    }
-
+    // Uターンの特別処理
     const arrowInstruction = targetClock === 6
-        ? '中心付近でぐるっとUターンして6時の方向へ戻る赤い矢印を描いてください。'
+        ? '中心付近でぐるっとUターンして6時の方向へ戻る「U字型の赤い矢印」を描いてください。'
         : `${targetClock}時の方向へ向かって赤い矢印を描いてください。`;
 
+    // 🌟 追加：スタート地点の場合は6時（進入路）を描かない
+    const formatClocks = (clocksStr: string) => {
+        if (!isStart) return clocksStr;
+        return clocksStr.split('、').filter(c => c !== '6時').join('、') || '（道なし）';
+    };
+
+    if (shape === 'その他（詳細設定）') {
+        let roads = point.clockPositions || [12];
+        if (!isStart && !roads.includes(6)) roads = [...roads, 6].sort((a, b) => a - b);
+        if (isStart) roads = roads.filter(r => r !== 6);
+
+        const correct = point.correctClock || roads[0];
+        const customArrow = correct === 6
+            ? '中心付近でぐるっとUターンして6時の方向へ戻るU字型の赤い矢印を描いてください。'
+            : `${correct}時の方向へ向かって赤い矢印を描いてください。`;
+        return `中心(50,50)から ${roads.join('時、')}時 の方向に道を、${styleInstruction}${noEntryInstruction}${customArrow}`;
+    }
+
     const baseLine = (clocks: string, noGo: string) =>
-        `中心(50,50)から ${clocks} の方向に道を、${styleInstruction}${noGo}${arrowInstruction}`;
+        `中心(50,50)から ${formatClocks(clocks)} の方向に道を、${styleInstruction}${noGo}${arrowInstruction}`;
 
     switch (shape) {
         case '十字路': return baseLine('12時、3時、6時、9時', noEntryInstruction);
         case 'Y字路':
             const yClock = (dirEmoji === '➡️' || dirEmoji === '↗️') ? 2 : ((dirEmoji === '⬅️' || dirEmoji === '↖️') ? 10 : targetClock);
-            return `中心(50,50)から 10時、2時、6時 の方向に道を、${styleInstruction}${noEntryInstruction}${yClock}時の方向へ赤い矢印を描いてください。`;
+            const yArrow = targetClock === 6 ? '中心付近でぐるっとUターンして6時の方向へ戻るU字型の赤い矢印を描いてください。' : `${yClock}時の方向へ向かって赤い矢印を描いてください。`;
+            return `中心(50,50)から ${formatClocks('10時、2時、6時')} の方向に道を、${styleInstruction}${noEntryInstruction}${yArrow}`;
         case 'T字路（突き当たり）': return baseLine('9時、3時、6時', noEntryInstruction);
         case 'ト字路（右分岐）': return baseLine('12時、3時、6時', noEntryInstruction);
         case '逆ト字路（左分岐）': return baseLine('12時、9時、6時', noEntryInstruction);
-        default: return baseLine('12時と6時', noEntryInstruction);
+        default: return baseLine('12時、6時', noEntryInstruction);
     }
 }
 
@@ -78,24 +88,27 @@ export function generateAIPrompt(courseTitle: string, points: Point[]): string {
 
 【絶対遵守の描画ルール】
 1. viewBoxは "0 0 100 100" 固定。中心点は (50, 50) とすること。
-2. 進入路は画面下端 (50, 100) から中心 (50, 50) に向かう太い黒線で描くこと（6時の方向）。
+2. 進入路は画面下端 (50, 100) から中心 (50, 50) に向かう太い黒線で描くこと（これが6時の方向です）。※ただし種類が「スタート地点」の場合は、進入路（6時の道）は描かないでください。
 3. 指定された形状（曲線、ギザギザ、直線）を忠実に再現して描画すること。
 4. 正しい進行方向には赤色で目立つ矢印を描くこと。
 5. 背景は透過。
-6. 【超重要】SVGコードのみを順番に出力してください。説明文は一切不要です。
+6. 【超重要】SVGコードのみを順番に出力してください。挨拶や説明文は一切不要です。
 
 以下が各ポイントのデータです。
 `;
 
     let pointsText = '';
     points.forEach((point, index) => {
+        // 🌟 ゴール地点は道路形状を描かないためスキップ
         if (point.pointType === 'ゴール' || index === points.length - 1) return;
-        const shapePrompt = getShapePrompt(point);
+
+        const isStart = point.pointType === 'スタート地点';
+        const shapePrompt = getShapePrompt(point, isStart);
         const notePrompt = point.customNote ? `\n・【AIへの補足】: ${point.customNote}` : '';
 
         pointsText += `
 ---
-【ポイント ${index + 1}】
+【ポイント ${index + 1}】（種類: ${point.pointType || 'ただの道順'}）
 ・形状と指示: ${shapePrompt}${notePrompt}
 `;
     });

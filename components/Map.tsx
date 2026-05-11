@@ -16,7 +16,7 @@ type MapProps = {
 const createCustomIcon = (direction: string, index: number) => {
   const emoji = direction.split(' ')[0];
   const isDefault = direction === '📍 指定なし';
-  
+
   const htmlContent = `
     <div style="
       background-color: white;
@@ -62,10 +62,10 @@ export default function Map({ points, onMapClick, center }: MapProps) {
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
-      
+
       <MapUpdater center={center} /> {/* 🌟 追加：移動用コンポーネントを配置 */}
       <MapClickHandler onMapClick={onMapClick} />
-      
+
       {points.map((p, index) => (
         <Marker key={index} position={[p.lat, p.lng] as any} icon={createCustomIcon(p.direction, index)}>
           <Popup>
@@ -77,7 +77,7 @@ export default function Map({ points, onMapClick, center }: MapProps) {
           </Popup>
         </Marker>
       ))}
-      
+
       <Polyline positions={points.map(p => [p.lat, p.lng]) as any} color="blue" weight={4} opacity={0.7} />
     </MapComp>
   );
