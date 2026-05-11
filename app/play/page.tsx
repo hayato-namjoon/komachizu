@@ -25,7 +25,8 @@ export default function PlayPage() {
     const [isGpsActive, setIsGpsActive] = useState(false);
 
     const [checkedPoints, setCheckedPoints] = useState<number[]>([]);
-    const [discoveredIndices, setDiscoveredIndices] = useState<number[]>([]);
+    const [discoveredCheckpoints, setDiscoveredCheckpoints] = useState<number[]>([]); // 🌟 到達したチェックポイントのインデックス
+    const [currentTab, setCurrentTab] = useState<'map' | 'checkpoint'>('map'); // 🌟 表示するタブ
 
     useEffect(() => {
         const fetchCourses = async () => {
@@ -34,16 +35,6 @@ export default function PlayPage() {
         };
         fetchCourses();
     }, []);
-
-    // 🌟 コース選択時に「スタート」「道順」「ゴール」だけを初期表示にする
-    useEffect(() => {
-        if (selectedCourse) {
-            const initialIndices = selectedCourse.points
-                .map((p, i) => (p.pointType !== 'チェックポイント' ? i : -1))
-                .filter(i => i !== -1);
-            setDiscoveredIndices(initialIndices);
-        }
-    }, [selectedCourse]);
 
     const toggleGps = () => {
         if (isGpsActive) { setIsGpsActive(false); setCurrentLoc(null); return; }
@@ -57,21 +48,20 @@ export default function PlayPage() {
         );
     };
 
-    // 🌟 GPS移動時のチェックポイント発見ロジック
+    // 🌟 GPSでチェックポイントへの到達を判定
     useEffect(() => {
         if (currentLoc && selectedCourse) {
             selectedCourse.points.forEach((p, i) => {
                 const dist = getDistance(currentLoc.lat, currentLoc.lng, p.lat, p.lng);
                 const threshold = p.radius || 5;
 
-                // 未発見のチェックポイントの到達範囲内に入ったら発見！
-                if (dist <= threshold && !discoveredIndices.includes(i) && p.pointType === 'チェックポイント') {
-                    setDiscoveredIndices(prev => [...prev, i].sort((a, b) => a - b));
-                    alert(`✨ チェックポイント到達！\n新たな指示が追加されました。`);
+                if (p.pointType === 'チェックポイント' && dist <= threshold && !discoveredCheckpoints.includes(i)) {
+                    setDiscoveredCheckpoints(prev => [...prev, i].sort((a, b) => a - b));
+                    alert(`✨ チェックポイント到達！\n「チェックポイントページ」に新たな指示が追加されました。`);
                 }
             });
         }
-    }, [currentLoc, selectedCourse, discoveredIndices]);
+    }, [currentLoc, selectedCourse, discoveredCheckpoints]);
 
     if (!selectedCourse) {
         return (
@@ -80,7 +70,7 @@ export default function PlayPage() {
                 <h1 style={{ textAlign: 'center', borderBottom: '2px dashed #8b5a2b', paddingBottom: '10px' }}>🧭 冒険のコースを選ぶ</h1>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', marginTop: '30px' }}>
                     {courses.map(course => (
-                        <button key={course.id} onClick={() => { setSelectedCourse(course); setCheckedPoints([]); setDiscoveredIndices([]); setIsGpsActive(false); }} style={{ padding: '20px', fontSize: '20px', fontWeight: 'bold', backgroundColor: '#fbf4e6', border: '2px solid #8b5a2b', borderRadius: '4px', color: '#5c3a21', cursor: 'pointer', boxShadow: '2px 2px 0px #8b5a2b', fontFamily: 'inherit' }}>
+                        <button key={course.id} onClick={() => { setSelectedCourse(course); setCheckedPoints([]); setDiscoveredCheckpoints([]); setIsGpsActive(false); setCurrentTab('map'); }} style={{ padding: '20px', fontSize: '20px', fontWeight: 'bold', backgroundColor: '#fbf4e6', border: '2px solid #8b5a2b', borderRadius: '4px', color: '#5c3a21', cursor: 'pointer', boxShadow: '2px 2px 0px #8b5a2b', fontFamily: 'inherit' }}>
                             🚩 {course.title}
                         </button>
                     ))}
@@ -101,13 +91,15 @@ export default function PlayPage() {
         if (type === 'スタート地点') return '#0050b3';
         if (type === 'チェックポイント') return '#d46b08';
         if (type === 'ゴール') return '#cf1322';
-        return '#595959';
+        return 'transparent'; // ただの道順は枠線を消す
     };
 
-    // 🌟 到達済みのチェックポイントのリストを作成
-    const discoveredCheckpoints = discoveredIndices
-        .filter(i => selectedCourse.points[i].pointType === 'チェックポイント')
-        .map(i => ({ index: i, point: selectedCourse.points[i] }));
+    // ルート（地図）用のポイント（スタート、ただの道順、ゴール）
+    const mapPoints = selectedCourse.points.map((p, i) => ({ point: p, index: i }))
+        .filter(item => item.point.pointType !== 'チェックポイント');
+
+    // 到達したチェックポイント用のデータ
+    const cpPoints = discoveredCheckpoints.map(i => ({ point: selectedCourse.points[i], index: i }));
 
     return (
         <div style={{ padding: '20px', maxWidth: '600px', margin: '0 auto', fontFamily: '"Zen Kurenaido", sans-serif', backgroundColor: '#fdf6e3', minHeight: '100vh', display: 'flex', flexDirection: 'column', color: '#5c3a21' }}>
@@ -118,75 +110,126 @@ export default function PlayPage() {
                     ↩️ 閉じる
                 </button>
                 <div style={{ fontWeight: 'bold', fontSize: '18px' }}>
-                    チェック済: {checkedPoints.length} / {discoveredIndices.length}
+                    達成度: {checkedPoints.length} / {selectedCourse.points.length}
                 </div>
             </div>
 
             <h2 style={{ textAlign: 'center', marginTop: 0, borderBottom: '2px dashed #8b5a2b', paddingBottom: '10px' }}>{selectedCourse.title}</h2>
 
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#fbf4e6', padding: '10px 15px', borderRadius: '4px', border: '1px solid #8b5a2b', marginBottom: '20px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#fbf4e6', padding: '10px 15px', borderRadius: '4px', border: '1px solid #8b5a2b', marginBottom: '15px' }}>
                 <button onClick={toggleGps} style={{ padding: '6px 12px', borderRadius: '4px', border: '1px solid #5c3a21', backgroundColor: isGpsActive ? '#fdf6e3' : '#eaddc5', color: '#5c3a21', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'inherit' }}>
                     {isGpsActive ? '🛰️ 測位中...' : '📍 GPS連動'}
                 </button>
                 <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#666' }}>
-                    ※ポイントに近づくと地図が追加されます
+                    {isGpsActive ? '隠しポイントを探索中' : 'GPSをオンにして探索しよう'}
                 </div>
             </div>
 
-            {/* 🌟 追加：到達したチェックポイントの指示を記録するログエリア */}
-            {discoveredCheckpoints.length > 0 && (
-                <div style={{ backgroundColor: '#fffbe6', border: '2px solid #d46b08', padding: '15px', borderRadius: '4px', marginBottom: '20px', boxShadow: '2px 2px 0px #d46b08' }}>
-                    <h3 style={{ margin: '0 0 10px 0', color: '#d46b08', borderBottom: '1px dashed #d46b08', paddingBottom: '5px' }}>
-                        📜 冒険の記録（到達ポイントの指示）
-                    </h3>
-                    <ul style={{ margin: 0, paddingLeft: '20px', color: '#5c3a21', fontWeight: 'bold', fontSize: '18px' }}>
-                        {discoveredCheckpoints.map(({ index, point }) => (
-                            <li key={index} style={{ marginBottom: '5px' }}>
-                                Pt.{index + 1}: {point.instruction || '（指示なし）'}
-                            </li>
-                        ))}
-                    </ul>
+            {/* 🌟 追加：タブ切り替え */}
+            <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
+                <button
+                    onClick={() => setCurrentTab('map')}
+                    style={{ flex: 1, padding: '10px', borderRadius: '4px', fontWeight: 'bold', border: '2px solid #8b5a2b', background: currentTab === 'map' ? '#8b5a2b' : '#fbf4e6', color: currentTab === 'map' ? '#fff' : '#8b5a2b', cursor: 'pointer', fontFamily: 'inherit', fontSize: '16px' }}
+                >
+                    🗺️ ルート地図
+                </button>
+                <button
+                    onClick={() => setCurrentTab('checkpoint')}
+                    style={{ flex: 1, padding: '10px', borderRadius: '4px', fontWeight: 'bold', border: '2px solid #d46b08', background: currentTab === 'checkpoint' ? '#d46b08' : '#fffbe6', color: currentTab === 'checkpoint' ? '#fff' : '#d46b08', cursor: 'pointer', fontFamily: 'inherit', fontSize: '16px', position: 'relative' }}
+                >
+                    🚩 隠しポイント
+                    {/* 到達したチェックポイントがあればバッジを表示 */}
+                    {discoveredCheckpoints.length > 0 && (
+                        <span style={{ position: 'absolute', top: '-8px', right: '-8px', background: '#cf1322', color: '#fff', borderRadius: '50%', padding: '2px 6px', fontSize: '12px' }}>
+                            {discoveredCheckpoints.length}
+                        </span>
+                    )}
+                </button>
+            </div>
+
+            {/* 🌟 ルート地図タブの表示 */}
+            {currentTab === 'map' && (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: '15px', paddingBottom: '20px' }}>
+                    {mapPoints.map(({ point: p, index: i }) => {
+                        const isChecked = checkedPoints.includes(i);
+                        const ptType = p.pointType || 'ただの道順'; // 修正：デフォルト値の設定
+                        const isGoalOrStart = ptType === 'スタート地点' || ptType === 'ゴール';
+
+                        return (
+                            <div key={i} onClick={() => toggleCheck(i)} style={{ backgroundColor: isChecked ? '#eaddc5' : '#fbf4e6', border: '2px solid #8b5a2b', borderRadius: '4px', padding: '10px', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', boxShadow: isChecked ? 'inset 2px 2px 5px rgba(0,0,0,0.2)' : '2px 2px 4px rgba(0,0,0,0.1)', position: 'relative', opacity: isChecked ? 0.7 : 1 }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', marginBottom: '8px', borderBottom: '1px solid #eaddc5', paddingBottom: '4px' }}>
+                                    <div style={{ fontSize: '14px', fontWeight: 'bold' }}>Pt.{i + 1}</div>
+                                    <div style={{ fontSize: '16px', color: isChecked ? '#cf1322' : '#ccc' }}>{isChecked ? '☑️' : '⬜️'}</div>
+                                </div>
+
+                                {/* 🌟 修正：ただの道順の時にはスタンプを表示しない */}
+                                {isGoalOrStart && (
+                                    <div style={{ position: 'absolute', top: '25px', right: '5px', border: `2px solid ${getStampColor(ptType)}`, color: getStampColor(ptType), padding: '2px 4px', fontSize: '10px', fontWeight: 'bold', transform: 'rotate(10deg)', opacity: 0.8, borderRadius: '2px', fontFamily: 'sans-serif' }}>
+                                        {ptType === 'スタート地点' ? 'START' : 'GOAL'}
+                                    </div>
+                                )}
+
+                                {ptType === 'ゴール' ? (
+                                    <div style={{ fontSize: '40px', height: '80px', display: 'flex', alignItems: 'center' }}>🏆</div>
+                                ) : p.svgCode ? (
+                                    <div style={{ width: '100%', height: '80px', display: 'flex', justifyContent: 'center' }} dangerouslySetInnerHTML={{ __html: p.svgCode }} />
+                                ) : (
+                                    <div style={{ fontSize: '40px', height: '80px', display: 'flex', alignItems: 'center' }}>{p.direction.split(' ')[0]}</div>
+                                )}
+
+                                <div style={{ fontSize: '16px', marginTop: '8px', textAlign: 'center', fontWeight: 'bold' }}>{p.instruction}</div>
+
+                                {isChecked && (
+                                    <div style={{ position: 'absolute', top: '50%', left: '10%', right: '10%', height: '4px', backgroundColor: '#cf1322', transform: 'rotate(-20deg)', opacity: 0.5, borderRadius: '2px' }} />
+                                )}
+                            </div>
+                        );
+                    })}
                 </div>
             )}
 
-            {/* 🌟 リストビュー（1枚ずつ見るビューは削除済） */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: '15px', paddingBottom: '20px' }}>
-                {selectedCourse.points.map((p, i) => {
-                    if (!discoveredIndices.includes(i)) return null; // 未発見のポイントは表示しない
-
-                    const isChecked = checkedPoints.includes(i);
-                    const ptType = p.pointType;
-
-                    return (
-                        <div key={i} onClick={() => toggleCheck(i)} style={{ backgroundColor: isChecked ? '#eaddc5' : '#fbf4e6', border: '2px solid #8b5a2b', borderRadius: '4px', padding: '10px', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', boxShadow: isChecked ? 'inset 2px 2px 5px rgba(0,0,0,0.2)' : '2px 2px 4px rgba(0,0,0,0.1)', position: 'relative', opacity: isChecked ? 0.7 : 1 }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', marginBottom: '8px', borderBottom: '1px solid #eaddc5', paddingBottom: '4px' }}>
-                                <div style={{ fontSize: '14px', fontWeight: 'bold' }}>Pt.{i + 1}</div>
-                                <div style={{ fontSize: '16px', color: isChecked ? '#cf1322' : '#ccc' }}>{isChecked ? '☑️' : '⬜️'}</div>
-                            </div>
-
-                            {ptType !== 'ただの道順' && (
-                                <div style={{ position: 'absolute', top: '25px', right: '5px', border: `2px solid ${getStampColor(ptType)}`, color: getStampColor(ptType), padding: '2px 4px', fontSize: '10px', fontWeight: 'bold', transform: 'rotate(10deg)', opacity: 0.8, borderRadius: '2px', fontFamily: 'sans-serif' }}>
-                                    {ptType === 'スタート地点' ? 'START' : ptType === 'チェックポイント' ? 'CHK' : 'GOAL'}
-                                </div>
-                            )}
-
-                            {ptType === 'ゴール' ? (
-                                <div style={{ fontSize: '40px', height: '80px', display: 'flex', alignItems: 'center' }}>🏆</div>
-                            ) : p.svgCode ? (
-                                <div style={{ width: '100%', height: '80px', display: 'flex', justifyContent: 'center' }} dangerouslySetInnerHTML={{ __html: p.svgCode }} />
-                            ) : (
-                                <div style={{ fontSize: '40px', height: '80px', display: 'flex', alignItems: 'center' }}>{p.direction.split(' ')[0]}</div>
-                            )}
-
-                            <div style={{ fontSize: '16px', marginTop: '8px', textAlign: 'center', fontWeight: 'bold' }}>{p.instruction}</div>
-
-                            {isChecked && (
-                                <div style={{ position: 'absolute', top: '50%', left: '10%', right: '10%', height: '4px', backgroundColor: '#cf1322', transform: 'rotate(-20deg)', opacity: 0.5, borderRadius: '2px' }} />
-                            )}
+            {/* 🌟 チェックポイントタブの表示 */}
+            {currentTab === 'checkpoint' && (
+                <div>
+                    {cpPoints.length === 0 ? (
+                        <div style={{ textAlign: 'center', padding: '40px 20px', backgroundColor: '#fffbe6', border: '2px dashed #d46b08', borderRadius: '4px', color: '#d46b08', fontWeight: 'bold' }}>
+                            <div style={{ fontSize: '40px', marginBottom: '10px' }}>🔍</div>
+                            まだ隠しポイントを発見していません。<br />GPSをオンにしてコースを探索しましょう。
                         </div>
-                    );
-                })}
-            </div>
+                    ) : (
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: '15px', paddingBottom: '20px' }}>
+                            {cpPoints.map(({ point: p, index: i }) => {
+                                const isChecked = checkedPoints.includes(i);
+
+                                return (
+                                    <div key={i} onClick={() => toggleCheck(i)} style={{ backgroundColor: isChecked ? '#eaddc5' : '#fffbe6', border: '2px solid #d46b08', borderRadius: '4px', padding: '10px', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', boxShadow: isChecked ? 'inset 2px 2px 5px rgba(0,0,0,0.2)' : '2px 2px 4px rgba(0,0,0,0.1)', position: 'relative', opacity: isChecked ? 0.7 : 1 }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', marginBottom: '8px', borderBottom: '1px solid #eaddc5', paddingBottom: '4px' }}>
+                                            <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#d46b08' }}>Pt.{i + 1}</div>
+                                            <div style={{ fontSize: '16px', color: isChecked ? '#cf1322' : '#ccc' }}>{isChecked ? '☑️' : '⬜️'}</div>
+                                        </div>
+
+                                        <div style={{ position: 'absolute', top: '25px', right: '5px', border: `2px solid ${getStampColor('チェックポイント')}`, color: getStampColor('チェックポイント'), padding: '2px 4px', fontSize: '10px', fontWeight: 'bold', transform: 'rotate(10deg)', opacity: 0.8, borderRadius: '2px', fontFamily: 'sans-serif' }}>
+                                            CHK
+                                        </div>
+
+                                        {p.svgCode ? (
+                                            <div style={{ width: '100%', height: '80px', display: 'flex', justifyContent: 'center' }} dangerouslySetInnerHTML={{ __html: p.svgCode }} />
+                                        ) : (
+                                            <div style={{ fontSize: '40px', height: '80px', display: 'flex', alignItems: 'center' }}>{p.direction.split(' ')[0]}</div>
+                                        )}
+
+                                        <div style={{ fontSize: '16px', marginTop: '8px', textAlign: 'center', fontWeight: 'bold' }}>{p.instruction}</div>
+
+                                        {isChecked && (
+                                            <div style={{ position: 'absolute', top: '50%', left: '10%', right: '10%', height: '4px', backgroundColor: '#cf1322', transform: 'rotate(-20deg)', opacity: 0.5, borderRadius: '2px' }} />
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
+                </div>
+            )}
         </div>
     );
 }
