@@ -21,14 +21,15 @@ function getDistance(lat1: number, lon1: number, lat2: number, lon2: number) {
 export default function PlayPage() {
     const [courses, setCourses] = useState<Course[]>([]);
     const [selectedCourse, setSelectedCourse] = useState<Course | null>(null);
-    const [currentIndex, setCurrentIndex] = useState(0);
+    const [currentIndex, setCurrentIndex] = useState(0); // 現在のGPS目標（シングルビュー用）
     const [currentLoc, setCurrentLoc] = useState<{ lat: number; lng: number } | null>(null);
     const [isGpsActive, setIsGpsActive] = useState(false);
     const [distanceToTarget, setDistanceToTarget] = useState<number | null>(null);
 
-    // 🌟 変更：初期値を 'list' にしてデフォルトを一覧表示に
+    // 🌟 追加：プレイヤーが通過したポイントを記録する配列（インデックスを保持）
+    const [checkedPoints, setCheckedPoints] = useState<number[]>([]);
+
     const [viewMode, setViewMode] = useState<'single' | 'list'>('list');
-    const [zoomedIndex, setZoomedIndex] = useState<number | null>(null);
 
     useEffect(() => {
         const fetchCourses = async () => {
@@ -64,9 +65,9 @@ export default function PlayPage() {
                 <h1 style={{ textAlign: 'center', borderBottom: '2px dashed #8b5a2b', paddingBottom: '10px' }}>🧭 冒険のコースを選ぶ</h1>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', marginTop: '30px' }}>
                     {courses.map(course => (
-                        <button key={course.id} onClick={() => { setSelectedCourse(course); setCurrentIndex(0); setIsGpsActive(false); setViewMode('list'); }} style={{ padding: '20px', fontSize: '20px', fontWeight: 'bold', backgroundColor: '#fbf4e6', border: '2px solid #8b5a2b', borderRadius: '4px', color: '#5c3a21', cursor: 'pointer', boxShadow: '2px 2px 0px #8b5a2b', fontFamily: 'inherit' }}>
+                        <button key={course.id} onClick={() => { setSelectedCourse(course); setCurrentIndex(0); setCheckedPoints([]); setIsGpsActive(false); setViewMode('list'); }} style={{ padding: '20px', fontSize: '20px', fontWeight: 'bold', backgroundColor: '#fbf4e6', border: '2px solid #8b5a2b', borderRadius: '4px', color: '#5c3a21', cursor: 'pointer', boxShadow: '2px 2px 0px #8b5a2b', fontFamily: 'inherit' }}>
                             🚩 {course.title} <br />
-                            <span style={{ fontSize: '14px', fontWeight: 'normal' }}>(全 {course.points.length} ページ)</span>
+                            <span style={{ fontSize: '14px', fontWeight: 'normal' }}>(全 {course.points.length} ポイント)</span>
                         </button>
                     ))}
                 </div>
@@ -83,7 +84,15 @@ export default function PlayPage() {
     const nextPoint = () => { if (!isLast) setCurrentIndex(currentIndex + 1); };
     const prevPoint = () => { if (!isFirst) setCurrentIndex(currentIndex - 1); };
 
-    // スタンプ風カラー
+    // 🌟 追加：チェックをつける/外す処理
+    const toggleCheck = (index: number) => {
+        if (checkedPoints.includes(index)) {
+            setCheckedPoints(checkedPoints.filter(i => i !== index));
+        } else {
+            setCheckedPoints([...checkedPoints, index]);
+        }
+    };
+
     const getStampColor = (type: string) => {
         if (type === 'スタート地点') return '#0050b3';
         if (type === 'チェックポイント') return '#d46b08';
@@ -100,7 +109,7 @@ export default function PlayPage() {
                     ↩️ 閉じる
                 </button>
                 <div style={{ fontWeight: 'bold', fontSize: '18px' }}>
-                    Page {currentIndex + 1} / {selectedCourse.points.length}
+                    達成度: {checkedPoints.length} / {selectedCourse.points.length}
                 </div>
             </div>
 
@@ -108,7 +117,7 @@ export default function PlayPage() {
 
             <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
                 <button onClick={() => setViewMode('list')} style={{ flex: 1, padding: '10px', borderRadius: '4px', fontWeight: 'bold', border: '2px solid #8b5a2b', background: viewMode === 'list' ? '#8b5a2b' : '#fbf4e6', color: viewMode === 'list' ? '#fff' : '#8b5a2b', cursor: 'pointer', fontFamily: 'inherit', fontSize: '16px' }}>
-                    🗺️ 一覧を見る
+                    🗺️ 一覧・チェック
                 </button>
                 <button onClick={() => setViewMode('single')} style={{ flex: 1, padding: '10px', borderRadius: '4px', fontWeight: 'bold', border: '2px solid #8b5a2b', background: viewMode === 'single' ? '#8b5a2b' : '#fbf4e6', color: viewMode === 'single' ? '#fff' : '#8b5a2b', cursor: 'pointer', fontFamily: 'inherit', fontSize: '16px' }}>
                     📖 1枚ずつ見る
@@ -121,12 +130,13 @@ export default function PlayPage() {
                         {isGpsActive ? '🛰️ 測位中' : '📍 GPS連動'}
                     </button>
                     <div style={{ fontSize: '18px', fontWeight: 'bold' }}>
-                        距離: {distanceToTarget !== null ? `${distanceToTarget} m` : '---'}
+                        目標: Pt.{currentIndex + 1} ({distanceToTarget !== null ? `${distanceToTarget} m` : '---'})
                     </div>
                 </div>
             )}
 
             {viewMode === 'single' ? (
+                // シングルビュー
                 <>
                     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', backgroundColor: '#fbf4e6', borderRadius: '4px', padding: '30px 20px', margin: '10px 0 20px 0', border: '2px solid #8b5a2b', position: 'relative', boxShadow: '2px 2px 8px rgba(0,0,0,0.1)' }}>
 
@@ -143,7 +153,7 @@ export default function PlayPage() {
                         )}
 
                         <div style={{ fontSize: '28px', fontWeight: 'bold', textAlign: 'center' }}>
-                            {currentPoint.instruction || (pType === 'ゴール' ? 'お疲れ様でした！' : '道なりに進む')}
+                            {currentPoint.instruction || ''} {/* 🌟 変更：「道なりに進む」を削除 */}
                         </div>
                     </div>
 
@@ -157,18 +167,41 @@ export default function PlayPage() {
                     </div>
                 </>
             ) : (
+                // 🌟 リストビュー（チェック機能付き）
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: '15px', paddingBottom: '20px' }}>
                     {selectedCourse.points.map((p, i) => {
                         const ptType = p.pointType || 'ただの道順';
-                        const isCurrent = i === currentIndex;
+                        const isChecked = checkedPoints.includes(i);
+
                         return (
                             <div
-                                key={i} onClick={() => { setZoomedIndex(i); setCurrentIndex(i); }}
-                                style={{ backgroundColor: '#fbf4e6', border: isCurrent ? '4px solid #5c3a21' : '2px solid #8b5a2b', borderRadius: '4px', padding: '10px', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', boxShadow: '2px 2px 4px rgba(0,0,0,0.1)', position: 'relative' }}
+                                key={i}
+                                // 🌟 変更：クリックで拡大表示を削除し、チェックボックスのON/OFF処理に変更
+                                onClick={() => toggleCheck(i)}
+                                style={{
+                                    backgroundColor: isChecked ? '#eaddc5' : '#fbf4e6', // チェック済みなら背景色を暗く
+                                    border: '2px solid #8b5a2b',
+                                    borderRadius: '4px',
+                                    padding: '10px',
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    alignItems: 'center',
+                                    boxShadow: isChecked ? 'inset 2px 2px 5px rgba(0,0,0,0.2)' : '2px 2px 4px rgba(0,0,0,0.1)', // 凹んだような影
+                                    position: 'relative',
+                                    opacity: isChecked ? 0.7 : 1 // チェック済みなら少し薄く
+                                }}
                             >
-                                <div style={{ fontSize: '14px', fontWeight: 'bold', marginBottom: '8px', width: '100%', textAlign: 'left', borderBottom: '1px solid #eaddc5' }}>Pt. {i + 1}</div>
+                                {/* 🌟 追加：チェックマーク */}
+                                <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', marginBottom: '8px', borderBottom: '1px solid #eaddc5', paddingBottom: '4px' }}>
+                                    <div style={{ fontSize: '14px', fontWeight: 'bold' }}>Pt. {i + 1}</div>
+                                    <div style={{ fontSize: '16px', color: isChecked ? '#cf1322' : '#ccc' }}>
+                                        {isChecked ? '☑️' : '⬜️'}
+                                    </div>
+                                </div>
+
                                 {ptType !== 'ただの道順' && (
-                                    <div style={{ position: 'absolute', top: '5px', right: '5px', border: `2px solid ${getStampColor(ptType)}`, color: getStampColor(ptType), padding: '2px 4px', fontSize: '10px', fontWeight: 'bold', transform: 'rotate(10deg)', opacity: 0.8, borderRadius: '2px', fontFamily: 'sans-serif' }}>
+                                    <div style={{ position: 'absolute', top: '25px', right: '5px', border: `2px solid ${getStampColor(ptType)}`, color: getStampColor(ptType), padding: '2px 4px', fontSize: '10px', fontWeight: 'bold', transform: 'rotate(10deg)', opacity: 0.8, borderRadius: '2px', fontFamily: 'sans-serif' }}>
                                         {ptType === 'スタート地点' ? 'START' : ptType === 'チェックポイント' ? 'CHK' : 'GOAL'}
                                     </div>
                                 )}
@@ -181,36 +214,16 @@ export default function PlayPage() {
                                     <div style={{ fontSize: '40px', height: '80px', display: 'flex', alignItems: 'center' }}>{p.direction.split(' ')[0]}</div>
                                 )}
                                 <div style={{ fontSize: '16px', marginTop: '8px', textAlign: 'center', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', width: '100%', fontWeight: 'bold' }}>
-                                    {p.instruction || '道なり'}
+                                    {p.instruction || ''} {/* 🌟 変更：「道なり」を削除 */}
                                 </div>
+
+                                {/* 🌟 追加：チェック済みの時の斜線（バツ印）演出 */}
+                                {isChecked && (
+                                    <div style={{ position: 'absolute', top: '50%', left: '10%', right: '10%', height: '4px', backgroundColor: '#cf1322', transform: 'rotate(-20deg)', opacity: 0.5, borderRadius: '2px', pointerEvents: 'none' }} />
+                                )}
                             </div>
                         );
                     })}
-                </div>
-            )}
-
-            {zoomedIndex !== null && (
-                <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(92,58,33,0.8)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }} onClick={() => setZoomedIndex(null)}>
-                    <div style={{ backgroundColor: '#fdf6e3', padding: '20px', borderRadius: '4px', maxWidth: '400px', width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', border: '3px solid #8b5a2b', boxShadow: '0 10px 25px rgba(0,0,0,0.5)', fontFamily: '"Zen Kurenaido", sans-serif', color: '#5c3a21', backgroundImage: 'radial-gradient(#eaddc5 1px, transparent 1px)', backgroundSize: '10px 10px' }} onClick={(e) => e.stopPropagation()}>
-
-                        <h3 style={{ marginTop: 0, borderBottom: '2px dashed #8b5a2b', paddingBottom: '10px', width: '100%', textAlign: 'center' }}>Point {zoomedIndex + 1}</h3>
-
-                        {selectedCourse.points[zoomedIndex].pointType === 'ゴール' ? (
-                            <div style={{ fontSize: '120px', marginBottom: '20px' }}>🏆</div>
-                        ) : selectedCourse.points[zoomedIndex].svgCode ? (
-                            <div style={{ width: '100%', maxWidth: '300px', marginBottom: '20px', backgroundColor: '#fff', border: '1px solid #ccc', padding: '10px' }} dangerouslySetInnerHTML={{ __html: selectedCourse.points[zoomedIndex].svgCode! }} />
-                        ) : (
-                            <div style={{ fontSize: '100px', marginBottom: '20px' }}>{selectedCourse.points[zoomedIndex].direction.split(' ')[0]}</div>
-                        )}
-
-                        <p style={{ fontSize: '26px', fontWeight: 'bold', textAlign: 'center', margin: '0 0 20px 0' }}>
-                            {selectedCourse.points[zoomedIndex].instruction || '道なりに進む'}
-                        </p>
-
-                        <button onClick={() => setZoomedIndex(null)} style={{ width: '100%', padding: '14px', fontSize: '20px', fontWeight: 'bold', background: '#8b5a2b', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontFamily: 'inherit' }}>
-                            閉じる
-                        </button>
-                    </div>
                 </div>
             )}
         </div>
