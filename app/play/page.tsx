@@ -140,7 +140,7 @@ export default function PlayPage() {
                     onClick={() => setCurrentTab('checkpoint')}
                     style={{ flex: 1, padding: '10px', borderRadius: '4px', fontWeight: 'bold', border: '2px solid #d46b08', background: currentTab === 'checkpoint' ? '#d46b08' : '#fffbe6', color: currentTab === 'checkpoint' ? '#fff' : '#d46b08', cursor: 'pointer', fontFamily: 'inherit', fontSize: '16px', position: 'relative' }}
                 >
-                    🚩 隠しポイント
+                    🚩 チェックポイント
                     {discoveredCheckpoints.length > 0 && (
                         <span style={{ position: 'absolute', top: '-8px', right: '-8px', background: '#cf1322', color: '#fff', borderRadius: '50%', padding: '2px 6px', fontSize: '12px' }}>
                             {discoveredCheckpoints.length}
