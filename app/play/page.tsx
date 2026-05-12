@@ -25,8 +25,9 @@ export default function PlayPage() {
     const [isGpsActive, setIsGpsActive] = useState(false);
 
     const [checkedPoints, setCheckedPoints] = useState<number[]>([]);
-    const [discoveredCheckpoints, setDiscoveredCheckpoints] = useState<number[]>([]); // 🌟 到達したチェックポイントのインデックス
-    const [currentTab, setCurrentTab] = useState<'map' | 'checkpoint'>('map'); // 🌟 表示するタブ
+    const [discoveredCheckpoints, setDiscoveredCheckpoints] = useState<number[]>([]);
+    const [isGoalReached, setIsGoalReached] = useState(false); // 🌟 ゴール達成フラグ
+    const [currentTab, setCurrentTab] = useState<'map' | 'checkpoint'>('map');
 
     useEffect(() => {
         const fetchCourses = async () => {
@@ -48,20 +49,27 @@ export default function PlayPage() {
         );
     };
 
-    // 🌟 GPSでチェックポイントへの到達を判定
+    // 🌟 GPSで「チェックポイント」と「ゴール」への到達を判定
     useEffect(() => {
         if (currentLoc && selectedCourse) {
             selectedCourse.points.forEach((p, i) => {
                 const dist = getDistance(currentLoc.lat, currentLoc.lng, p.lat, p.lng);
                 const threshold = p.radius || 5;
 
+                // チェックポイント到達判定
                 if (p.pointType === 'チェックポイント' && dist <= threshold && !discoveredCheckpoints.includes(i)) {
                     setDiscoveredCheckpoints(prev => [...prev, i].sort((a, b) => a - b));
-                    alert(`✨ チェックポイント到達！\n「チェックポイントページ」に新たな指示が追加されました。`);
+                    alert(`✨ チェックポイント到達！\n「${p.instruction}」を発見しました。`);
+                }
+
+                // 🌟 ゴール到達判定（一覧には出ていないが裏で判定）
+                if (p.pointType === 'ゴール' && dist <= threshold && !isGoalReached) {
+                    setIsGoalReached(true);
+                    alert(`🎊 🏆 ゴール到達！！ 🏆 🎊\nおめでとうございます！「${selectedCourse.title}」をクリアしました！`);
                 }
             });
         }
-    }, [currentLoc, selectedCourse, discoveredCheckpoints]);
+    }, [currentLoc, selectedCourse, discoveredCheckpoints, isGoalReached]);
 
     if (!selectedCourse) {
         return (
@@ -70,7 +78,7 @@ export default function PlayPage() {
                 <h1 style={{ textAlign: 'center', borderBottom: '2px dashed #8b5a2b', paddingBottom: '10px' }}>🧭 冒険のコースを選ぶ</h1>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', marginTop: '30px' }}>
                     {courses.map(course => (
-                        <button key={course.id} onClick={() => { setSelectedCourse(course); setCheckedPoints([]); setDiscoveredCheckpoints([]); setIsGpsActive(false); setCurrentTab('map'); }} style={{ padding: '20px', fontSize: '20px', fontWeight: 'bold', backgroundColor: '#fbf4e6', border: '2px solid #8b5a2b', borderRadius: '4px', color: '#5c3a21', cursor: 'pointer', boxShadow: '2px 2px 0px #8b5a2b', fontFamily: 'inherit' }}>
+                        <button key={course.id} onClick={() => { setSelectedCourse(course); setCheckedPoints([]); setDiscoveredCheckpoints([]); setIsGoalReached(false); setIsGpsActive(false); setCurrentTab('map'); }} style={{ padding: '20px', fontSize: '20px', fontWeight: 'bold', backgroundColor: '#fbf4e6', border: '2px solid #8b5a2b', borderRadius: '4px', color: '#5c3a21', cursor: 'pointer', boxShadow: '2px 2px 0px #8b5a2b', fontFamily: 'inherit' }}>
                             🚩 {course.title}
                         </button>
                     ))}
@@ -90,42 +98,41 @@ export default function PlayPage() {
     const getStampColor = (type?: string) => {
         if (type === 'スタート地点') return '#0050b3';
         if (type === 'チェックポイント') return '#d46b08';
-        if (type === 'ゴール') return '#cf1322';
-        return 'transparent'; // ただの道順は枠線を消す
+        return 'transparent';
     };
 
-    // ルート（地図）用のポイント（スタート、ただの道順、ゴール）
+    // 🌟 修正：ルート地図用のポイントから「チェックポイント」と「ゴール」の両方を除外
     const mapPoints = selectedCourse.points.map((p, i) => ({ point: p, index: i }))
-        .filter(item => item.point.pointType !== 'チェックポイント');
+        .filter(item => item.point.pointType !== 'チェックポイント' && item.point.pointType !== 'ゴール');
 
-    // 到達したチェックポイント用のデータ
     const cpPoints = discoveredCheckpoints.map(i => ({ point: selectedCourse.points[i], index: i }));
 
     return (
-        <div style={{ padding: '20px', maxWidth: '600px', margin: '0 auto', fontFamily: '"Zen Kurenaido", sans-serif', backgroundColor: '#fdf6e3', minHeight: '100vh', display: 'flex', flexDirection: 'column', color: '#5c3a21' }}>
+        <div style={{ padding: '20px', maxWidth: '600px', margin: '0 auto', fontFamily: '"Zen Kurenaido", sans-serif', backgroundColor: isGoalReached ? '#fff1f0' : '#fdf6e3', minHeight: '100vh', display: 'flex', flexDirection: 'column', color: '#5c3a21', transition: 'background-color 1s' }}>
             <style>{`@import url('https://fonts.googleapis.com/css2?family=Zen+Kurenaido&display=swap');`}</style>
 
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
                 <button onClick={() => setSelectedCourse(null)} style={{ padding: '6px 12px', background: 'transparent', border: '1px solid #8b5a2b', borderRadius: '4px', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 'bold' }}>
-                    ↩️ 閉じる
+                    ↩️ 終了
                 </button>
                 <div style={{ fontWeight: 'bold', fontSize: '18px' }}>
-                    達成度: {checkedPoints.length} / {selectedCourse.points.length}
+                    {isGoalReached ? '🏆 CLEAR!' : `進行中: ${checkedPoints.length} / ${mapPoints.length}`}
                 </div>
             </div>
 
-            <h2 style={{ textAlign: 'center', marginTop: 0, borderBottom: '2px dashed #8b5a2b', paddingBottom: '10px' }}>{selectedCourse.title}</h2>
+            <h2 style={{ textAlign: 'center', marginTop: 0, borderBottom: '2px dashed #8b5a2b', paddingBottom: '10px' }}>
+                {isGoalReached ? '🎊 FINISHED 🎊' : selectedCourse.title}
+            </h2>
 
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#fbf4e6', padding: '10px 15px', borderRadius: '4px', border: '1px solid #8b5a2b', marginBottom: '15px' }}>
                 <button onClick={toggleGps} style={{ padding: '6px 12px', borderRadius: '4px', border: '1px solid #5c3a21', backgroundColor: isGpsActive ? '#fdf6e3' : '#eaddc5', color: '#5c3a21', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'inherit' }}>
                     {isGpsActive ? '🛰️ 測位中...' : '📍 GPS連動'}
                 </button>
                 <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#666' }}>
-                    {isGpsActive ? '隠しポイントを探索中' : 'GPSをオンにして探索しよう'}
+                    {isGoalReached ? 'ゴール地点に到着しました！' : '目的地に近づくと変化が起きます'}
                 </div>
             </div>
 
-            {/* 🌟 追加：タブ切り替え */}
             <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
                 <button
                     onClick={() => setCurrentTab('map')}
@@ -138,7 +145,6 @@ export default function PlayPage() {
                     style={{ flex: 1, padding: '10px', borderRadius: '4px', fontWeight: 'bold', border: '2px solid #d46b08', background: currentTab === 'checkpoint' ? '#d46b08' : '#fffbe6', color: currentTab === 'checkpoint' ? '#fff' : '#d46b08', cursor: 'pointer', fontFamily: 'inherit', fontSize: '16px', position: 'relative' }}
                 >
                     🚩 隠しポイント
-                    {/* 到達したチェックポイントがあればバッジを表示 */}
                     {discoveredCheckpoints.length > 0 && (
                         <span style={{ position: 'absolute', top: '-8px', right: '-8px', background: '#cf1322', color: '#fff', borderRadius: '50%', padding: '2px 6px', fontSize: '12px' }}>
                             {discoveredCheckpoints.length}
@@ -147,31 +153,28 @@ export default function PlayPage() {
                 </button>
             </div>
 
-            {/* 🌟 ルート地図タブの表示 */}
+            {/* 🌟 ルート地図タブ */}
             {currentTab === 'map' && (
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: '15px', paddingBottom: '20px' }}>
                     {mapPoints.map(({ point: p, index: i }) => {
                         const isChecked = checkedPoints.includes(i);
-                        const ptType = p.pointType || 'ただの道順'; // 修正：デフォルト値の設定
-                        const isGoalOrStart = ptType === 'スタート地点' || ptType === 'ゴール';
+                        const ptType = p.pointType || 'ただの道順';
+                        const isStart = ptType === 'スタート地点';
 
                         return (
                             <div key={i} onClick={() => toggleCheck(i)} style={{ backgroundColor: isChecked ? '#eaddc5' : '#fbf4e6', border: '2px solid #8b5a2b', borderRadius: '4px', padding: '10px', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', boxShadow: isChecked ? 'inset 2px 2px 5px rgba(0,0,0,0.2)' : '2px 2px 4px rgba(0,0,0,0.1)', position: 'relative', opacity: isChecked ? 0.7 : 1 }}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', marginBottom: '8px', borderBottom: '1px solid #eaddc5', paddingBottom: '4px' }}>
-                                    <div style={{ fontSize: '14px', fontWeight: 'bold' }}>Pt.{i + 1}</div>
+                                    <div style={{ fontSize: '14px', fontWeight: 'bold' }}>No.{i + 1}</div>
                                     <div style={{ fontSize: '16px', color: isChecked ? '#cf1322' : '#ccc' }}>{isChecked ? '☑️' : '⬜️'}</div>
                                 </div>
 
-                                {/* 🌟 修正：ただの道順の時にはスタンプを表示しない */}
-                                {isGoalOrStart && (
+                                {isStart && (
                                     <div style={{ position: 'absolute', top: '25px', right: '5px', border: `2px solid ${getStampColor(ptType)}`, color: getStampColor(ptType), padding: '2px 4px', fontSize: '10px', fontWeight: 'bold', transform: 'rotate(10deg)', opacity: 0.8, borderRadius: '2px', fontFamily: 'sans-serif' }}>
-                                        {ptType === 'スタート地点' ? 'START' : 'GOAL'}
+                                        START
                                     </div>
                                 )}
 
-                                {ptType === 'ゴール' ? (
-                                    <div style={{ fontSize: '40px', height: '80px', display: 'flex', alignItems: 'center' }}>🏆</div>
-                                ) : p.svgCode ? (
+                                {p.svgCode ? (
                                     <div style={{ width: '100%', height: '80px', display: 'flex', justifyContent: 'center' }} dangerouslySetInnerHTML={{ __html: p.svgCode }} />
                                 ) : (
                                     <div style={{ fontSize: '40px', height: '80px', display: 'flex', alignItems: 'center' }}>{p.direction.split(' ')[0]}</div>
@@ -188,48 +191,49 @@ export default function PlayPage() {
                 </div>
             )}
 
-            {/* 🌟 チェックポイントタブの表示 */}
+            {/* 🌟 チェックポイントタブ */}
             {currentTab === 'checkpoint' && (
-                <div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: '15px', paddingBottom: '20px' }}>
                     {cpPoints.length === 0 ? (
-                        <div style={{ textAlign: 'center', padding: '40px 20px', backgroundColor: '#fffbe6', border: '2px dashed #d46b08', borderRadius: '4px', color: '#d46b08', fontWeight: 'bold' }}>
+                        <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '40px 20px', backgroundColor: '#fffbe6', border: '2px dashed #d46b08', borderRadius: '4px', color: '#d46b08', fontWeight: 'bold' }}>
                             <div style={{ fontSize: '40px', marginBottom: '10px' }}>🔍</div>
-                            まだ隠しポイントを発見していません。<br />GPSをオンにしてコースを探索しましょう。
+                            隠されたポイントを探しましょう！
                         </div>
                     ) : (
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: '15px', paddingBottom: '20px' }}>
-                            {cpPoints.map(({ point: p, index: i }) => {
-                                const isChecked = checkedPoints.includes(i);
-
-                                return (
-                                    <div key={i} onClick={() => toggleCheck(i)} style={{ backgroundColor: isChecked ? '#eaddc5' : '#fffbe6', border: '2px solid #d46b08', borderRadius: '4px', padding: '10px', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', boxShadow: isChecked ? 'inset 2px 2px 5px rgba(0,0,0,0.2)' : '2px 2px 4px rgba(0,0,0,0.1)', position: 'relative', opacity: isChecked ? 0.7 : 1 }}>
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', marginBottom: '8px', borderBottom: '1px solid #eaddc5', paddingBottom: '4px' }}>
-                                            <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#d46b08' }}>Pt.{i + 1}</div>
-                                            <div style={{ fontSize: '16px', color: isChecked ? '#cf1322' : '#ccc' }}>{isChecked ? '☑️' : '⬜️'}</div>
-                                        </div>
-
-                                        <div style={{ position: 'absolute', top: '25px', right: '5px', border: `2px solid ${getStampColor('チェックポイント')}`, color: getStampColor('チェックポイント'), padding: '2px 4px', fontSize: '10px', fontWeight: 'bold', transform: 'rotate(10deg)', opacity: 0.8, borderRadius: '2px', fontFamily: 'sans-serif' }}>
-                                            CHK
-                                        </div>
-
-                                        {p.svgCode ? (
-                                            <div style={{ width: '100%', height: '80px', display: 'flex', justifyContent: 'center' }} dangerouslySetInnerHTML={{ __html: p.svgCode }} />
-                                        ) : (
-                                            <div style={{ fontSize: '40px', height: '80px', display: 'flex', alignItems: 'center' }}>{p.direction.split(' ')[0]}</div>
-                                        )}
-
-                                        <div style={{ fontSize: '16px', marginTop: '8px', textAlign: 'center', fontWeight: 'bold' }}>{p.instruction}</div>
-
-                                        {isChecked && (
-                                            <div style={{ position: 'absolute', top: '50%', left: '10%', right: '10%', height: '4px', backgroundColor: '#cf1322', transform: 'rotate(-20deg)', opacity: 0.5, borderRadius: '2px' }} />
-                                        )}
+                        cpPoints.map(({ point: p, index: i }) => {
+                            const isChecked = checkedPoints.includes(i);
+                            return (
+                                <div key={i} onClick={() => toggleCheck(i)} style={{ backgroundColor: isChecked ? '#eaddc5' : '#fffbe6', border: '2px solid #d46b08', borderRadius: '4px', padding: '10px', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', boxShadow: isChecked ? 'inset 2px 2px 5px rgba(0,0,0,0.2)' : '2px 2px 4px rgba(0,0,0,0.1)', position: 'relative', opacity: isChecked ? 0.7 : 1 }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', marginBottom: '8px', borderBottom: '1px solid #eaddc5', paddingBottom: '4px' }}>
+                                        <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#d46b08' }}>発見!</div>
+                                        <div style={{ fontSize: '16px', color: isChecked ? '#cf1322' : '#ccc' }}>{isChecked ? '☑️' : '⬜️'}</div>
                                     </div>
-                                );
-                            })}
-                        </div>
+                                    <div style={{ position: 'absolute', top: '25px', right: '5px', border: `2px solid #d46b08`, color: '#d46b08', padding: '2px 4px', fontSize: '10px', fontWeight: 'bold', transform: 'rotate(10deg)', opacity: 0.8, borderRadius: '2px', fontFamily: 'sans-serif' }}>
+                                        CHK
+                                    </div>
+                                    <div style={{ width: '100%', height: '80px', display: 'flex', justifyContent: 'center' }} dangerouslySetInnerHTML={{ __html: p.svgCode || '' }} />
+                                    <div style={{ fontSize: '16px', marginTop: '8px', textAlign: 'center', fontWeight: 'bold' }}>{p.instruction}</div>
+                                </div>
+                            );
+                        })
                     )}
                 </div>
             )}
+
+            {/* 🌟 ゴール達成時の演出オーバーレイ（簡易） */}
+            {isGoalReached && (
+                <div style={{ position: 'fixed', bottom: '20px', left: '20px', right: '20px', background: '#cf1322', color: 'white', padding: '20px', borderRadius: '12px', textAlign: 'center', boxShadow: '0 4px 15px rgba(0,0,0,0.3)', zIndex: 1000, animation: 'slideUp 0.5s ease-out' }}>
+                    <div style={{ fontSize: '24px', fontWeight: 'bold', marginBottom: '5px' }}>🏁 GOAL REACHED! 🏁</div>
+                    <div style={{ fontSize: '16px' }}>お疲れ様でした！冒険完了です！</div>
+                </div>
+            )}
+
+            <style>{`
+                @keyframes slideUp {
+                    from { transform: translateY(100%); opacity: 0; }
+                    to { transform: translateY(0); opacity: 1; }
+                }
+            `}</style>
         </div>
     );
 }
