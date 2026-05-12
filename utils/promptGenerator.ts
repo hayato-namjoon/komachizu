@@ -10,6 +10,8 @@ export type Point = {
     roadStyle?: 'normal' | 'curve' | 'zigzag';
     noEntryClocks?: number[];
     radius?: number;
+    // 🌟 追加：目印の情報
+    landmark?: string;
 };
 
 function getBearing(lat1: number, lng1: number, lat2: number, lng2: number): string {
@@ -33,22 +35,18 @@ function getShapePrompt(point: Point, isStart: boolean): string {
     if (dirEmoji === '↖️') targetClock = 10;
     if (dirEmoji === '↪️') targetClock = 6;
 
-    // 線の形
     let styleInstruction = '黒い太線（直線）で描いてください。';
     if (style === 'curve') styleInstruction = '滑らかな曲線（ベジェ曲線）で描いてください。';
     if (style === 'zigzag') styleInstruction = 'ギザギザの折れ線（ジグザグ）で描いてください。';
 
-    // 進入禁止（横棒）
     const noEntryInstruction = noEntries.length > 0
         ? `また、${noEntries.join('時、')}時の方向の道の入り口には、進入禁止を示す太い横棒（道路を塞ぐ短い線）を描いてください。`
         : '';
 
-    // Uターンの特別処理
     const arrowInstruction = targetClock === 6
         ? '中心付近でぐるっとUターンして6時の方向へ戻る「U字型の赤い矢印」を描いてください。'
         : `${targetClock}時の方向へ向かって赤い矢印を描いてください。`;
 
-    // 🌟 追加：スタート地点の場合は6時（進入路）を描かない
     const formatClocks = (clocksStr: string) => {
         if (!isStart) return clocksStr;
         return clocksStr.split('、').filter(c => c !== '6時').join('、') || '（道なし）';
@@ -93,23 +91,25 @@ export function generateAIPrompt(courseTitle: string, points: Point[]): string {
 4. 正しい進行方向には赤色で目立つ矢印を描くこと。
 5. 背景は透過。
 6. 【超重要】SVGコードのみを順番に出力してください。挨拶や説明文は一切不要です。
+7. 🌟 【目印の描画】「目印」の指定がある場合、交差点の該当する位置に、シンプルな図形（四角や丸など）と色を使ってアイコンを描き込んでください。
 
 以下が各ポイントのデータです。
 `;
 
     let pointsText = '';
     points.forEach((point, index) => {
-        // 🌟 ゴール地点は道路形状を描かないためスキップ
         if (point.pointType === 'ゴール' || index === points.length - 1) return;
 
         const isStart = point.pointType === 'スタート地点';
         const shapePrompt = getShapePrompt(point, isStart);
+        // 🌟 変更：目印の指示を追加
+        const landmarkPrompt = point.landmark ? `\n・目印: ${point.landmark}（※シンプルに図形で描画してください）` : '';
         const notePrompt = point.customNote ? `\n・【AIへの補足】: ${point.customNote}` : '';
 
         pointsText += `
 ---
 【ポイント ${index + 1}】（種類: ${point.pointType || 'ただの道順'}）
-・形状と指示: ${shapePrompt}${notePrompt}
+・形状と指示: ${shapePrompt}${landmarkPrompt}${notePrompt}
 `;
     });
 

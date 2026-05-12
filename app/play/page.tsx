@@ -4,7 +4,12 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../utils/supabase';
 
-type Point = { lat: number; lng: number; instruction: string; direction: string; svgCode?: string; pointType?: string; radius?: number; };
+// app/play/page.tsx の上部の型定義のみ更新
+type Point = {
+    lat: number; lng: number; instruction: string; direction: string;
+    svgCode?: string; pointType?: string; radius?: number;
+    landmark?: string; // 🌟 これを追加
+};
 type Course = { id: string; title: string; points: Point[] };
 
 function getDistance(lat1: number, lon1: number, lat2: number, lon2: number) {
