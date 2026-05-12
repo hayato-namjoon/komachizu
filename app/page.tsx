@@ -7,7 +7,13 @@ import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea
 import { supabase } from '../utils/supabase';
 import { generateAIPrompt, Point } from '../utils/promptGenerator';
 
-const Map = dynamic(() => import('../components/Map'), { ssr: false });
+type MapProps = {
+    center: [number, number];
+    points: Point[];
+    onMapClick: (lat: number, lng: number) => void;
+    onMarkerDragEnd?: (index: number, lat: number, lng: number) => void;
+};
+const Map = dynamic<MapProps>(() => import('../components/Map'), { ssr: false });
 
 type Course = { id: string; title: string; points: Point[] };
 
@@ -65,16 +71,9 @@ export default function Home() {
 
     const handleMapClick = (lat: number, lng: number) => {
         const initialType = points.length === 0 ? 'スタート地点' : 'ただの道順';
-        setPoints([...points, {
-            lat, lng, instruction: '', direction: '⬆️ 直進', svgCode: '',
-            intersectionShape: '十字路', clockPositions: [12], correctClock: 12,
-            customNote: '', pointType: initialType,
-            radius: 5, // 🌟 修正：初期値を 5m に徹底
-            landmark: ''
-        }]);
+        setPoints([...points, { lat, lng, instruction: '', direction: '⬆️ 直進', svgCode: '', intersectionShape: '十字路', clockPositions: [12], correctClock: 12, customNote: '', pointType: initialType, radius: 5, landmark: '' }]);
     };
 
-    // 🌟 追加：ピンをドラッグして移動した後の処理
     const handleMarkerDragEnd = (index: number, lat: number, lng: number) => {
         const newPoints = [...points];
         newPoints[index] = { ...newPoints[index], lat, lng };
@@ -117,6 +116,55 @@ export default function Home() {
         const [reorderedItem] = items.splice(result.source.index, 1);
         items.splice(result.destination.index, 0, reorderedItem);
         setPoints(items);
+    };
+
+    // 🌟 追加：ルート反転機能
+    const handleReverseRoute = () => {
+        if (points.length < 2) return alert('反転するには2つ以上のポイントが必要です。');
+        if (!confirm('ルートを逆から辿るように反転しますか？\n（※スタートとゴールが入れ替わり、「右・左」の指示が反転します。進行方向が変わるため、交差点の細かい形状設定は手動で微調整してください）')) return;
+
+        const newPoints = [...points].reverse().map((p, index, arr) => {
+            const isFirst = index === 0;
+            const isLast = index === arr.length - 1;
+            let newP = { ...p };
+
+            // 文字列の右/左を反転
+            if (newP.instruction) {
+                newP.instruction = newP.instruction.replace(/右/g, '__RIGHT__').replace(/左/g, '右').replace(/__RIGHT__/g, '左');
+            }
+            if (newP.landmark) {
+                newP.landmark = newP.landmark.replace(/右/g, '__RIGHT__').replace(/左/g, '右').replace(/__RIGHT__/g, '左');
+            }
+
+            // 進行方向の反転
+            if (newP.direction === '➡️ 右折') newP.direction = '⬅️ 左折';
+            else if (newP.direction === '⬅️ 左折') newP.direction = '➡️ 右折';
+            else if (newP.direction === '↗️ 斜め右') newP.direction = '↖️ 斜め左';
+            else if (newP.direction === '↖️ 斜め左') newP.direction = '↗️ 斜め右';
+
+            // 形状の基本反転
+            if (newP.intersectionShape === 'ト字路（右分岐）') newP.intersectionShape = '逆ト字路（左分岐）';
+            else if (newP.intersectionShape === '逆ト字路（左分岐）') newP.intersectionShape = 'ト字路（右分岐）';
+
+            // 役割の再設定
+            if (isFirst) {
+                newP.pointType = 'スタート地点';
+                if (!newP.direction || newP.direction === '🏁 ゴール') newP.direction = '⬆️ 直進';
+                if (!newP.intersectionShape) newP.intersectionShape = '十字路';
+            } else if (isLast) {
+                newP.pointType = 'ゴール';
+                newP.direction = '🏁 ゴール';
+            } else {
+                if (newP.pointType === 'スタート地点' || newP.pointType === 'ゴール') newP.pointType = 'ただの道順';
+            }
+
+            // SVGは再生成が必要なためクリア
+            newP.svgCode = '';
+            return newP;
+        });
+
+        setPoints(newPoints);
+        alert('🔄 ルートを反転しました！「AI連携エリア」からSVGを再生成してください。');
     };
 
     const saveCourse = async () => {
@@ -211,13 +259,19 @@ export default function Home() {
                         <button onClick={handleSearchLocation} style={{ padding: '6px 12px', backgroundColor: '#5c3a21', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontFamily: 'inherit' }}>ジャンプ</button>
                     </div>
                     <div style={{ border: '2px solid #8b5a2b' }}>
-                        {/* 🌟 修正：onMarkerDragEnd を渡してドラッグを有効化 */}
                         <Map center={mapCenter} onMapClick={handleMapClick} points={points} onMarkerDragEnd={handleMarkerDragEnd} />
                     </div>
                 </div>
 
                 <div style={{ width: '480px', padding: '15px', border: '2px solid #8b5a2b', borderRadius: '8px', backgroundColor: '#fbf4e6', maxHeight: '750px', overflowY: 'auto', boxShadow: 'inset 0 0 10px rgba(0,0,0,0.05)' }}>
-                    <h3 style={{ marginTop: 0, borderBottom: '2px dashed #8b5a2b', paddingBottom: '10px' }}>📍 チェックポイント一覧</h3>
+                    {/* 🌟 修正：チェックポイント一覧のヘッダーに反転ボタンを追加 */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px dashed #8b5a2b', paddingBottom: '10px', marginBottom: '15px' }}>
+                        <h3 style={{ margin: 0 }}>📍 チェックポイント一覧</h3>
+                        <button onClick={handleReverseRoute} disabled={points.length < 2} style={{ padding: '6px 12px', backgroundColor: points.length < 2 ? '#ccc' : '#5c3a21', color: 'white', border: 'none', borderRadius: '4px', cursor: points.length < 2 ? 'not-allowed' : 'pointer', fontFamily: 'inherit', fontWeight: 'bold' }}>
+                            🔄 ルートを反転
+                        </button>
+                    </div>
+
                     {isBrowser && (
                         <DragDropContext onDragEnd={onDragEnd}>
                             <Droppable droppableId="point-list">
@@ -246,7 +300,6 @@ export default function Home() {
                                                                 </select>
                                                             </div>
 
-                                                            {/* 🌟 修正：到達判定のUIを復活（初期値5） */}
                                                             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
                                                                 <strong style={{ whiteSpace: 'nowrap', color: '#5c3a21' }}>🎯 到達判定:</strong>
                                                                 <select value={p.radius || 5} onChange={(e) => updatePoint(i, 'radius', Number(e.target.value))} style={{ padding: '4px', flex: 1, borderRadius: '4px', border: '1px solid #8b5a2b', fontWeight: 'bold', fontFamily: 'inherit', background: '#fff' }}>
