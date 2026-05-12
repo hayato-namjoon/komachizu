@@ -118,7 +118,6 @@ export default function Home() {
         setPoints(items);
     };
 
-    // 🌟 追加：ルート反転機能
     const handleReverseRoute = () => {
         if (points.length < 2) return alert('反転するには2つ以上のポイントが必要です。');
         if (!confirm('ルートを逆から辿るように反転しますか？\n（※スタートとゴールが入れ替わり、「右・左」の指示が反転します。進行方向が変わるため、交差点の細かい形状設定は手動で微調整してください）')) return;
@@ -128,7 +127,6 @@ export default function Home() {
             const isLast = index === arr.length - 1;
             let newP = { ...p };
 
-            // 文字列の右/左を反転
             if (newP.instruction) {
                 newP.instruction = newP.instruction.replace(/右/g, '__RIGHT__').replace(/左/g, '右').replace(/__RIGHT__/g, '左');
             }
@@ -136,17 +134,14 @@ export default function Home() {
                 newP.landmark = newP.landmark.replace(/右/g, '__RIGHT__').replace(/左/g, '右').replace(/__RIGHT__/g, '左');
             }
 
-            // 進行方向の反転
             if (newP.direction === '➡️ 右折') newP.direction = '⬅️ 左折';
             else if (newP.direction === '⬅️ 左折') newP.direction = '➡️ 右折';
             else if (newP.direction === '↗️ 斜め右') newP.direction = '↖️ 斜め左';
             else if (newP.direction === '↖️ 斜め左') newP.direction = '↗️ 斜め右';
 
-            // 形状の基本反転
             if (newP.intersectionShape === 'ト字路（右分岐）') newP.intersectionShape = '逆ト字路（左分岐）';
             else if (newP.intersectionShape === '逆ト字路（左分岐）') newP.intersectionShape = 'ト字路（右分岐）';
 
-            // 役割の再設定
             if (isFirst) {
                 newP.pointType = 'スタート地点';
                 if (!newP.direction || newP.direction === '🏁 ゴール') newP.direction = '⬆️ 直進';
@@ -158,13 +153,12 @@ export default function Home() {
                 if (newP.pointType === 'スタート地点' || newP.pointType === 'ゴール') newP.pointType = 'ただの道順';
             }
 
-            // SVGは再生成が必要なためクリア
             newP.svgCode = '';
             return newP;
         });
 
         setPoints(newPoints);
-        alert('🔄 ルートを反転しました！「AI連携エリア」からSVGを再生成してください。');
+        alert('🔄 ルートを反転しました！SVGを再生成してから「別名で保存」することをおすすめします。');
     };
 
     const saveCourse = async () => {
@@ -184,13 +178,45 @@ export default function Home() {
         } catch (error) { alert('保存に失敗しました。'); } finally { setIsSaving(false); }
     };
 
+    // 🌟 復活：コース削除機能
     const deleteCourse = async () => {
         if (!editingId) return;
         if (!confirm(`コース「${title}」を削除しますか？`)) return;
         try {
-            await supabase.from('courses').delete().eq('id', editingId); alert('🗑️ 削除しました。');
-            setEditingId(null); setTitle(''); setPoints([]); fetchCourses();
-        } catch (error) { alert('削除に失敗しました。'); }
+            await supabase.from('courses').delete().eq('id', editingId);
+            alert('🗑️ 削除しました。');
+            setEditingId(null);
+            setTitle('');
+            setPoints([]);
+            fetchCourses();
+        } catch (error) {
+            alert('削除に失敗しました。');
+        }
+    };
+
+    const saveAsNewCourse = async () => {
+        if (!title || points.length === 0) return alert('コース名とピンの配置が必要です！');
+
+        const newTitle = prompt('新しいコース名を入力してください', `${title} (逆ルート)`);
+        if (!newTitle) return;
+
+        setIsSaving(true);
+        try {
+            const { data, error } = await supabase.from('courses').insert([{ title: newTitle, points }]).select();
+            if (error) throw error;
+
+            alert(`🎉 「${newTitle}」として別名で保存しました！`);
+            fetchCourses();
+
+            if (data && data.length > 0) {
+                setEditingId(data[0].id);
+                setTitle(newTitle);
+            }
+        } catch (error) {
+            alert('保存に失敗しました。');
+        } finally {
+            setIsSaving(false);
+        }
     };
 
     const handleCopyPrompt = () => {
@@ -229,10 +255,17 @@ export default function Home() {
                     <option value="">＋ 新規コース作成</option>
                     {courses.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
                 </select>
+
                 {editingId && <button onClick={deleteCourse} style={{ padding: '8px 16px', backgroundColor: '#8b0000', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>🗑️ 削除</button>}
+
                 <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="コース名" style={{ flex: '2', padding: '8px', borderRadius: '4px', border: '1px solid #8b5a2b', background: '#fdf6e3', fontFamily: 'inherit' }} />
-                <button onClick={saveCourse} disabled={isSaving} style={{ padding: '8px 24px', backgroundColor: '#5c3a21', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>
-                    {isSaving ? '⏳ 保存中...' : '💾 保存'}
+
+                <button onClick={saveCourse} disabled={isSaving} style={{ padding: '8px 16px', backgroundColor: '#5c3a21', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>
+                    {isSaving ? '⏳...' : (editingId ? '💾 上書き保存' : '💾 保存')}
+                </button>
+
+                <button onClick={saveAsNewCourse} disabled={isSaving || points.length === 0} style={{ padding: '8px 16px', backgroundColor: '#d46b08', color: 'white', border: 'none', borderRadius: '4px', cursor: (points.length === 0) ? 'not-allowed' : 'pointer', fontWeight: 'bold', fontFamily: 'inherit' }}>
+                    📝 別名で保存
                 </button>
             </div>
 
@@ -264,7 +297,6 @@ export default function Home() {
                 </div>
 
                 <div style={{ width: '480px', padding: '15px', border: '2px solid #8b5a2b', borderRadius: '8px', backgroundColor: '#fbf4e6', maxHeight: '750px', overflowY: 'auto', boxShadow: 'inset 0 0 10px rgba(0,0,0,0.05)' }}>
-                    {/* 🌟 修正：チェックポイント一覧のヘッダーに反転ボタンを追加 */}
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px dashed #8b5a2b', paddingBottom: '10px', marginBottom: '15px' }}>
                         <h3 style={{ margin: 0 }}>📍 チェックポイント一覧</h3>
                         <button onClick={handleReverseRoute} disabled={points.length < 2} style={{ padding: '6px 12px', backgroundColor: points.length < 2 ? '#ccc' : '#5c3a21', color: 'white', border: 'none', borderRadius: '4px', cursor: points.length < 2 ? 'not-allowed' : 'pointer', fontFamily: 'inherit', fontWeight: 'bold' }}>
