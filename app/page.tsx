@@ -65,7 +65,20 @@ export default function Home() {
 
     const handleMapClick = (lat: number, lng: number) => {
         const initialType = points.length === 0 ? 'スタート地点' : 'ただの道順';
-        setPoints([...points, { lat, lng, instruction: '', direction: '⬆️ 直進', svgCode: '', intersectionShape: '十字路', clockPositions: [12], correctClock: 12, customNote: '', pointType: initialType, radius: 5, landmark: '' }]);
+        setPoints([...points, {
+            lat, lng, instruction: '', direction: '⬆️ 直進', svgCode: '',
+            intersectionShape: '十字路', clockPositions: [12], correctClock: 12,
+            customNote: '', pointType: initialType,
+            radius: 5, // 🌟 修正：初期値を 5m に徹底
+            landmark: ''
+        }]);
+    };
+
+    // 🌟 追加：ピンをドラッグして移動した後の処理
+    const handleMarkerDragEnd = (index: number, lat: number, lng: number) => {
+        const newPoints = [...points];
+        newPoints[index] = { ...newPoints[index], lat, lng };
+        setPoints(newPoints);
     };
 
     const updatePoint = (index: number, field: keyof Point, value: any) => {
@@ -198,7 +211,8 @@ export default function Home() {
                         <button onClick={handleSearchLocation} style={{ padding: '6px 12px', backgroundColor: '#5c3a21', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontFamily: 'inherit' }}>ジャンプ</button>
                     </div>
                     <div style={{ border: '2px solid #8b5a2b' }}>
-                        <Map center={mapCenter} onMapClick={handleMapClick} points={points} />
+                        {/* 🌟 修正：onMarkerDragEnd を渡してドラッグを有効化 */}
+                        <Map center={mapCenter} onMapClick={handleMapClick} points={points} onMarkerDragEnd={handleMarkerDragEnd} />
                     </div>
                 </div>
 
@@ -232,7 +246,17 @@ export default function Home() {
                                                                 </select>
                                                             </div>
 
-                                                            {/* 🌟 追加：ストリートビュー連携ボタン */}
+                                                            {/* 🌟 修正：到達判定のUIを復活（初期値5） */}
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
+                                                                <strong style={{ whiteSpace: 'nowrap', color: '#5c3a21' }}>🎯 到達判定:</strong>
+                                                                <select value={p.radius || 5} onChange={(e) => updatePoint(i, 'radius', Number(e.target.value))} style={{ padding: '4px', flex: 1, borderRadius: '4px', border: '1px solid #8b5a2b', fontWeight: 'bold', fontFamily: 'inherit', background: '#fff' }}>
+                                                                    <option value={1}>1m (非推奨)</option>
+                                                                    <option value={5}>5m (厳しめ)</option>
+                                                                    <option value={10}>10m (標準)</option>
+                                                                    <option value={20}>20m (甘め・推奨)</option>
+                                                                </select>
+                                                            </div>
+
                                                             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '15px' }}>
                                                                 <a
                                                                     href={`https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${p.lat},${p.lng}`}
@@ -261,7 +285,6 @@ export default function Home() {
                                                                         <input type="text" value={p.instruction} onChange={(e) => updatePoint(i, 'instruction', e.target.value)} placeholder="例：看板を右" style={{ flex: '1', padding: '4px', borderRadius: '4px', border: '1px solid #8b5a2b', fontFamily: 'inherit' }} />
                                                                     </div>
 
-                                                                    {/* 🌟 追加：目印の入力欄 */}
                                                                     <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '10px', padding: '8px', backgroundColor: '#fff', border: '1px solid #d46b08', borderRadius: '4px' }}>
                                                                         <strong style={{ whiteSpace: 'nowrap', color: '#d46b08' }}>📌 目印:</strong>
                                                                         <input
@@ -273,7 +296,6 @@ export default function Home() {
                                                                         />
                                                                     </div>
 
-                                                                    {/* ...（既存の clockPositions などのUI）... */}
                                                                     <input type="text" value={p.customNote || ''} onChange={(e) => updatePoint(i, 'customNote', e.target.value)} placeholder="AIへの補足（例: 中央に花壇）" style={{ width: '100%', padding: '4px', marginTop: '8px', fontSize: '13px', borderRadius: '4px', border: '1px solid #ccc', fontFamily: 'inherit' }} />
                                                                 </div>
                                                             )}

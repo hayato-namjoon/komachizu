@@ -10,7 +10,9 @@ type Point = { lat: number; lng: number; instruction: string; direction: string 
 type MapProps = {
   points: Point[];
   onMapClick: (lat: number, lng: number) => void;
-  center: [number, number]; // 🌟 追加：親から中心座標を受け取る
+  center: [number, number];
+  // 🌟 追加：ドラッグ終了時の座標を親に伝える関数
+  onMarkerDragEnd?: (index: number, lat: number, lng: number) => void;
 };
 
 const createCustomIcon = (direction: string, index: number) => {
@@ -44,16 +46,16 @@ function MapClickHandler({ onMapClick }: { onMapClick: (lat: number, lng: number
   return null;
 }
 
-// 🌟 追加：受け取った座標へ地図を滑らかに移動させるコンポーネント
 function MapUpdater({ center }: { center: [number, number] }) {
   const map = useMap();
   useEffect(() => {
-    map.flyTo(center, 15, { animate: true, duration: 1.5 }); // flyToを使うとアニメーションで飛んでいきます！
+    map.flyTo(center, 15, { animate: true, duration: 1.5 });
   }, [center, map]);
   return null;
 }
 
-export default function Map({ points, onMapClick, center }: MapProps) {
+// 🌟 props に onMarkerDragEnd を追加
+export default function Map({ points, onMapClick, center, onMarkerDragEnd }: MapProps) {
   const MapComp = MapContainer as any;
 
   return (
@@ -63,11 +65,27 @@ export default function Map({ points, onMapClick, center }: MapProps) {
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
 
-      <MapUpdater center={center} /> {/* 🌟 追加：移動用コンポーネントを配置 */}
+      <MapUpdater center={center} />
       <MapClickHandler onMapClick={onMapClick} />
 
       {points.map((p, index) => (
-        <Marker key={index} position={[p.lat, p.lng] as any} icon={createCustomIcon(p.direction, index)}>
+        <Marker
+          key={index}
+          position={[p.lat, p.lng] as any}
+          icon={createCustomIcon(p.direction, index)}
+          // 🌟 追加：ピンをドラッグ可能にする
+          draggable={true}
+          // 🌟 追加：ドラッグ終了時に新しい座標を取得して親へ渡す
+          eventHandlers={{
+            dragend: (e) => {
+              const marker = e.target;
+              const position = marker.getLatLng();
+              if (onMarkerDragEnd) {
+                onMarkerDragEnd(index, position.lat, position.lng);
+              }
+            }
+          }}
+        >
           <Popup>
             <div style={{ fontWeight: 'bold', marginBottom: '4px' }}>ポイント {index + 1}</div>
             <div style={{ fontSize: '14px' }}>
