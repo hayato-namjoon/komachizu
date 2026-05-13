@@ -10,7 +10,6 @@ export type Point = {
     roadStyle?: 'normal' | 'curve' | 'zigzag';
     noEntryClocks?: number[];
     radius?: number;
-    // 🌟 追加：目印の情報
     landmark?: string;
 };
 
@@ -43,6 +42,7 @@ function getShapePrompt(point: Point, isStart: boolean): string {
         ? `また、${noEntries.join('時、')}時の方向の道の入り口には、進入禁止を示す太い横棒（道路を塞ぐ短い線）を描いてください。`
         : '';
 
+    // 🌟 先ほどの「手前・奥」の矢印分岐をここに組み込むことも可能です（必要に応じてカスタマイズしてください）
     const arrowInstruction = targetClock === 6
         ? '中心付近でぐるっとUターンして6時の方向へ戻る「U字型の赤い矢印」を描いてください。'
         : `${targetClock}時の方向へ向かって赤い矢印を描いてください。`;
@@ -91,9 +91,19 @@ export function generateAIPrompt(courseTitle: string, points: Point[]): string {
 4. 正しい進行方向には赤色で目立つ矢印を描くこと。
 5. 背景は透過。
 6. 【超重要】SVGコードのみを順番に出力してください。挨拶や説明文は一切不要です。
-7. 🌟 【目印の描画】「目印」の指定がある場合、交差点の該当する位置に、シンプルな図形（四角や丸など）でアイコンを描き込んでください。
- 背景が薄い色のため、黄色や白などの明るい色を使う場合は【必ず黒や濃いグレーの太い縁取り（stroke="black" stroke-width="2"など）】をつけて視認性を確保してください。
- また、進行方向を示す「赤い矢印」と混同しない色を選んでください。
+7. 🌟 【目印の描画】「目印」の指定がある場合、交差点の該当する位置に以下の【公式デザインルール】に沿ってアイコンを描き込んでください。
+
+【公式デザインルール（統一規格）】
+・信号機：黒い長方形の中に、青(緑)・黄・赤の3つの小さな丸を並べる。
+・横断歩道：道路を横断する白い縞模様（ストライプ）。
+・電灯/外灯：黄色の丸（背景に同化しないよう、必ず stroke="black" stroke-width="2" の太い黒縁をつける）。
+・ポスト：濃いオレンジ色（または赤）の四角形に、白い横線（投函口）を入れる。
+・橋：道路の両脇に、欄干を示す茶色またはグレーの太線を引く。
+・案内板/看板：青または緑の四角形。
+・建物/お店：特定の色の四角形（コンビニなら青や緑など、適宜判断）。
+※上記以外の目印の場合も、シンプルで幾何学的な図形（丸、四角、三角）と分かりやすい色を使って表現してください。
+※進行方向を示す「赤い矢印」と混同しないように配置や色に注意してください。
+
 以下が各ポイントのデータです。
 `;
 
@@ -103,8 +113,7 @@ export function generateAIPrompt(courseTitle: string, points: Point[]): string {
 
         const isStart = point.pointType === 'スタート地点';
         const shapePrompt = getShapePrompt(point, isStart);
-        // 🌟 変更：目印の指示を追加
-        const landmarkPrompt = point.landmark ? `\n・目印: ${point.landmark}（※シンプルに図形で描画してください）` : '';
+        const landmarkPrompt = point.landmark ? `\n・目印: ${point.landmark}` : '';
         const notePrompt = point.customNote ? `\n・【AIへの補足】: ${point.customNote}` : '';
 
         pointsText += `
