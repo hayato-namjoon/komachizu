@@ -20,7 +20,6 @@ type Course = { id: string; title: string; points: Point[] };
 const DIRECTION_OPTIONS = ['📍 指定なし', '⬆️ 直進', '➡️ 右折', '⬅️ 左折', '↗️ 斜め右', '↖️ 斜め左', '↪️ Uターン', '🏁 ゴール'];
 const SHAPE_OPTIONS = ['十字路', 'Y字路', 'T字路（突き当たり）', 'ト字路（右分岐）', '逆ト字路（左分岐）', 'その他（詳細設定）'];
 const POINT_TYPES = ['スタート地点', 'ただの道順', 'チェックポイント', 'ゴール'];
-const ROAD_STYLES = [{ label: '➖ 直線', value: 'normal' }, { label: '〰️ カーブ', value: 'curve' }, { label: '⚡ ギザギザ', value: 'zigzag' }];
 
 const VALID_DIRECTIONS: Record<string, string[]> = {
     '十字路': ['⬆️ 直進', '➡️ 右折', '⬅️ 左折', '↪️ Uターン'],
@@ -40,7 +39,6 @@ export default function Home() {
     const [editingId, setEditingId] = useState<string | null>(null);
     const [mapCenter, setMapCenter] = useState<[number, number]>([35.6812, 139.7671]);
     const [searchQuery, setSearchQuery] = useState('');
-    const [showInstructions, setShowInstructions] = useState(false);
     const [bulkSvgInput, setBulkSvgInput] = useState('');
 
     useEffect(() => { setIsBrowser(true); fetchCourses(); }, []);
@@ -90,26 +88,10 @@ export default function Home() {
         setPoints(newPoints);
     };
 
-    const toggleClockPosition = (index: number, hour: number) => {
-        const currentPoint = points[index];
-        let newPositions = currentPoint.clockPositions || [];
-        if (newPositions.includes(hour)) newPositions = newPositions.filter(h => h !== hour);
-        else newPositions = [...newPositions, hour].sort((a, b) => a - b);
-        updatePoint(index, 'clockPositions', newPositions);
-        if (!newPositions.includes(currentPoint.correctClock || 12) && newPositions.length > 0) updatePoint(index, 'correctClock', newPositions[0]);
-    };
-
-    const toggleNoEntry = (index: number, hour: number) => {
-        const currentPoint = points[index];
-        let newNoEntries = currentPoint.noEntryClocks || [];
-        if (newNoEntries.includes(hour)) newNoEntries = newNoEntries.filter(h => h !== hour);
-        else newNoEntries = [...newNoEntries, hour].sort((a, b) => a - b);
-        updatePoint(index, 'noEntryClocks', newNoEntries);
-    };
-
     const removePoint = (index: number) => { setPoints(points.filter((_, i) => i !== index)); };
     const handleUndo = () => { setPoints(points.slice(0, -1)); };
     const handleClear = () => { if (confirm('本当にクリアしますか？')) setPoints([]); };
+
     const onDragEnd = (result: DropResult) => {
         if (!result.destination) return;
         const items = Array.from(points);
@@ -120,19 +102,15 @@ export default function Home() {
 
     const handleReverseRoute = () => {
         if (points.length < 2) return alert('反転するには2つ以上のポイントが必要です。');
-        if (!confirm('ルートを逆から辿るように反転しますか？\n（※スタートとゴールが入れ替わり、「右・左」の指示が反転します。進行方向が変わるため、交差点の細かい形状設定は手動で微調整してください）')) return;
+        if (!confirm('ルートを逆から辿るように反転しますか？')) return;
 
         const newPoints = [...points].reverse().map((p, index, arr) => {
             const isFirst = index === 0;
             const isLast = index === arr.length - 1;
             let newP = { ...p };
 
-            if (newP.instruction) {
-                newP.instruction = newP.instruction.replace(/右/g, '__RIGHT__').replace(/左/g, '右').replace(/__RIGHT__/g, '左');
-            }
-            if (newP.landmark) {
-                newP.landmark = newP.landmark.replace(/右/g, '__RIGHT__').replace(/左/g, '右').replace(/__RIGHT__/g, '左');
-            }
+            if (newP.instruction) newP.instruction = newP.instruction.replace(/右/g, '__RIGHT__').replace(/左/g, '右').replace(/__RIGHT__/g, '左');
+            if (newP.landmark) newP.landmark = newP.landmark.replace(/右/g, '__RIGHT__').replace(/左/g, '右').replace(/__RIGHT__/g, '左');
 
             if (newP.direction === '➡️ 右折') newP.direction = '⬅️ 左折';
             else if (newP.direction === '⬅️ 左折') newP.direction = '➡️ 右折';
@@ -152,7 +130,6 @@ export default function Home() {
             } else {
                 if (newP.pointType === 'スタート地点' || newP.pointType === 'ゴール') newP.pointType = 'ただの道順';
             }
-
             newP.svgCode = '';
             return newP;
         });
@@ -178,25 +155,18 @@ export default function Home() {
         } catch (error) { alert('保存に失敗しました。'); } finally { setIsSaving(false); }
     };
 
-    // 🌟 復活：コース削除機能
     const deleteCourse = async () => {
         if (!editingId) return;
         if (!confirm(`コース「${title}」を削除しますか？`)) return;
         try {
             await supabase.from('courses').delete().eq('id', editingId);
             alert('🗑️ 削除しました。');
-            setEditingId(null);
-            setTitle('');
-            setPoints([]);
-            fetchCourses();
-        } catch (error) {
-            alert('削除に失敗しました。');
-        }
+            setEditingId(null); setTitle(''); setPoints([]); fetchCourses();
+        } catch (error) { alert('削除に失敗しました。'); }
     };
 
     const saveAsNewCourse = async () => {
         if (!title || points.length === 0) return alert('コース名とピンの配置が必要です！');
-
         const newTitle = prompt('新しいコース名を入力してください', `${title} (逆ルート)`);
         if (!newTitle) return;
 
@@ -204,19 +174,10 @@ export default function Home() {
         try {
             const { data, error } = await supabase.from('courses').insert([{ title: newTitle, points }]).select();
             if (error) throw error;
-
             alert(`🎉 「${newTitle}」として別名で保存しました！`);
             fetchCourses();
-
-            if (data && data.length > 0) {
-                setEditingId(data[0].id);
-                setTitle(newTitle);
-            }
-        } catch (error) {
-            alert('保存に失敗しました。');
-        } finally {
-            setIsSaving(false);
-        }
+            if (data && data.length > 0) { setEditingId(data[0].id); setTitle(newTitle); }
+        } catch (error) { alert('保存に失敗しました。'); } finally { setIsSaving(false); }
     };
 
     const handleCopyPrompt = () => {
@@ -246,31 +207,82 @@ export default function Home() {
     };
 
     return (
-        <div style={{ padding: '20px', maxWidth: '1200px', margin: '0 auto', fontFamily: '"Zen Kurenaido", sans-serif', backgroundColor: '#fdf6e3', minHeight: '100vh', color: '#5c3a21' }}>
-            <style>{`@import url('https://fonts.googleapis.com/css2?family=Zen+Kurenaido&display=swap');`}</style>
+        <div className="main-container">
+            {/* 🌟 レスポンシブ対応のCSSを適用 */}
+            <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Zen+Kurenaido&display=swap');
+        
+        * { box-sizing: border-box; }
+        
+        .main-container {
+          padding: 20px; max-width: 1200px; margin: 0 auto; 
+          font-family: "Zen Kurenaido", sans-serif; background-color: #fdf6e3; min-height: 100vh; color: #5c3a21;
+        }
+
+        .top-controls {
+          display: flex; gap: 10px; margin-bottom: 20px; padding: 15px; 
+          background-color: #eaddc5; border-radius: 8px; border: 1px solid #8b5a2b;
+        }
+
+        .layout-container {
+          display: flex; gap: 20px; align-items: flex-start;
+        }
+
+        .map-section {
+          flex: 1; border: 3px solid #8b5a2b; border-radius: 4px; overflow: hidden; 
+          background-color: #eaddc5; padding: 5px; min-width: 0; width: 100%;
+        }
+
+        .sidebar-section {
+          width: 480px; padding: 15px; border: 2px solid #8b5a2b; border-radius: 8px; 
+          background-color: #fbf4e6; max-height: 750px; overflow-y: auto; 
+          box-shadow: inset 0 0 10px rgba(0,0,0,0.05); flex-shrink: 0;
+        }
+
+        .point-row {
+          display: flex; align-items: center; gap: 10px; margin-bottom: 10px;
+        }
+
+        .ai-area-header {
+          display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;
+        }
+
+        /* スマホ向け（画面幅 768px 以下）のスタイル */
+        @media (max-width: 768px) {
+          .main-container { padding: 10px; }
+          .top-controls { flex-direction: column; }
+          .top-controls select, .top-controls input, .top-controls button { width: 100%; font-size: 16px; padding: 12px; }
+          
+          .layout-container { flex-direction: column; }
+          .map-section { width: 100%; }
+          .sidebar-section { width: 100%; max-height: none; } /* スマホではリストの縦スクロール制限を解除 */
+          
+          .ai-area-header { flex-direction: column; align-items: flex-start; gap: 10px; }
+          .point-row { flex-direction: column; align-items: stretch; gap: 5px; }
+          .point-row > strong { margin-bottom: 2px; }
+          .point-row select, .point-row input { width: 100%; padding: 8px; font-size: 16px; }
+        }
+      `}</style>
+
             <h1 style={{ textAlign: 'center', borderBottom: '2px dashed #8b5a2b', paddingBottom: '10px' }}>📚 コマ地図ウォークラリー：システム管理</h1>
 
-            <div style={{ display: 'flex', gap: '10px', marginBottom: '20px', padding: '15px', backgroundColor: '#eaddc5', borderRadius: '8px', border: '1px solid #8b5a2b' }}>
-                <select value={editingId || ''} onChange={handleLoadCourse} style={{ flex: '1', padding: '8px', borderRadius: '4px', border: '1px solid #8b5a2b', background: '#fdf6e3', fontFamily: 'inherit', fontWeight: 'bold' }}>
+            <div className="top-controls">
+                <select value={editingId || ''} onChange={handleLoadCourse} style={{ flex: '1', borderRadius: '4px', border: '1px solid #8b5a2b', background: '#fdf6e3', fontFamily: 'inherit', fontWeight: 'bold' }}>
                     <option value="">＋ 新規コース作成</option>
                     {courses.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
                 </select>
-
-                {editingId && <button onClick={deleteCourse} style={{ padding: '8px 16px', backgroundColor: '#8b0000', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>🗑️ 削除</button>}
-
-                <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="コース名" style={{ flex: '2', padding: '8px', borderRadius: '4px', border: '1px solid #8b5a2b', background: '#fdf6e3', fontFamily: 'inherit' }} />
-
-                <button onClick={saveCourse} disabled={isSaving} style={{ padding: '8px 16px', backgroundColor: '#5c3a21', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>
+                {editingId && <button onClick={deleteCourse} style={{ backgroundColor: '#8b0000', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>🗑️ 削除</button>}
+                <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="コース名" style={{ flex: '2', borderRadius: '4px', border: '1px solid #8b5a2b', background: '#fdf6e3', fontFamily: 'inherit' }} />
+                <button onClick={saveCourse} disabled={isSaving} style={{ backgroundColor: '#5c3a21', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>
                     {isSaving ? '⏳...' : (editingId ? '💾 上書き保存' : '💾 保存')}
                 </button>
-
-                <button onClick={saveAsNewCourse} disabled={isSaving || points.length === 0} style={{ padding: '8px 16px', backgroundColor: '#d46b08', color: 'white', border: 'none', borderRadius: '4px', cursor: (points.length === 0) ? 'not-allowed' : 'pointer', fontWeight: 'bold', fontFamily: 'inherit' }}>
+                <button onClick={saveAsNewCourse} disabled={isSaving || points.length === 0} style={{ backgroundColor: '#d46b08', color: 'white', border: 'none', borderRadius: '4px', cursor: (points.length === 0) ? 'not-allowed' : 'pointer', fontWeight: 'bold', fontFamily: 'inherit' }}>
                     📝 別名で保存
                 </button>
             </div>
 
             <div style={{ marginBottom: '20px', padding: '20px', backgroundColor: '#f5ebff', border: '2px dashed #722ed1', borderRadius: '8px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
+                <div className="ai-area-header">
                     <h3 style={{ margin: 0, color: '#531dab' }}>🤖 AI連携エリア（一括生成）</h3>
                     <div>
                         <button onClick={handleUndo} disabled={points.length === 0} style={{ marginRight: '10px', padding: '6px 12px', cursor: 'pointer', borderRadius: '4px', border: '1px solid #ccc', backgroundColor: '#fff', fontFamily: 'inherit' }}>↩️ 戻す</button>
@@ -284,19 +296,19 @@ export default function Home() {
                 </div>
             </div>
 
-            <div style={{ display: 'flex', gap: '20px' }}>
-                <div style={{ flex: '1', border: '3px solid #8b5a2b', borderRadius: '4px', overflow: 'hidden', backgroundColor: '#eaddc5', padding: '5px' }}>
-                    <div style={{ padding: '8px', marginBottom: '5px', backgroundColor: '#fdf6e3', border: '1px solid #8b5a2b', display: 'flex', gap: '10px' }}>
-                        <strong style={{ display: 'flex', alignItems: 'center', whiteSpace: 'nowrap' }}>🔍 地図を移動:</strong>
-                        <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearchLocation()} placeholder="住所や郵便番号" style={{ flex: '1', padding: '6px', borderRadius: '4px', border: '1px solid #ccc', fontFamily: 'inherit' }} />
-                        <button onClick={handleSearchLocation} style={{ padding: '6px 12px', backgroundColor: '#5c3a21', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontFamily: 'inherit' }}>ジャンプ</button>
+            <div className="layout-container">
+                <div className="map-section">
+                    <div className="point-row" style={{ padding: '8px', marginBottom: '5px', backgroundColor: '#fdf6e3', border: '1px solid #8b5a2b', margin: '0' }}>
+                        <strong style={{ whiteSpace: 'nowrap' }}>🔍 地図を移動:</strong>
+                        <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearchLocation()} placeholder="住所や郵便番号" style={{ flex: '1', borderRadius: '4px', border: '1px solid #ccc', fontFamily: 'inherit' }} />
+                        <button onClick={handleSearchLocation} style={{ padding: '8px 12px', backgroundColor: '#5c3a21', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontFamily: 'inherit' }}>ジャンプ</button>
                     </div>
-                    <div style={{ border: '2px solid #8b5a2b' }}>
+                    <div style={{ border: '2px solid #8b5a2b', marginTop: '5px' }}>
                         <Map center={mapCenter} onMapClick={handleMapClick} points={points} onMarkerDragEnd={handleMarkerDragEnd} />
                     </div>
                 </div>
 
-                <div style={{ width: '480px', padding: '15px', border: '2px solid #8b5a2b', borderRadius: '8px', backgroundColor: '#fbf4e6', maxHeight: '750px', overflowY: 'auto', boxShadow: 'inset 0 0 10px rgba(0,0,0,0.05)' }}>
+                <div className="sidebar-section">
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px dashed #8b5a2b', paddingBottom: '10px', marginBottom: '15px' }}>
                         <h3 style={{ margin: 0 }}>📍 チェックポイント一覧</h3>
                         <button onClick={handleReverseRoute} disabled={points.length < 2} style={{ padding: '6px 12px', backgroundColor: points.length < 2 ? '#ccc' : '#5c3a21', color: 'white', border: 'none', borderRadius: '4px', cursor: points.length < 2 ? 'not-allowed' : 'pointer', fontFamily: 'inherit', fontWeight: 'bold' }}>
@@ -325,16 +337,16 @@ export default function Home() {
                                                                 <button onClick={() => removePoint(i)} style={{ color: '#a8071a', border: 'none', background: 'none', cursor: 'pointer', fontSize: '16px' }}>❌</button>
                                                             </div>
 
-                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
+                                                            <div className="point-row">
                                                                 <strong style={{ whiteSpace: 'nowrap', color: '#5c3a21' }}>🚩 役割:</strong>
-                                                                <select value={p.pointType || 'ただの道順'} onChange={(e) => updatePoint(i, 'pointType', e.target.value)} style={{ padding: '4px', flex: 1, borderRadius: '4px', border: '1px solid #8b5a2b', fontWeight: 'bold', fontFamily: 'inherit', background: '#fff' }}>
+                                                                <select value={p.pointType || 'ただの道順'} onChange={(e) => updatePoint(i, 'pointType', e.target.value)} style={{ flex: 1, borderRadius: '4px', border: '1px solid #8b5a2b', fontWeight: 'bold', fontFamily: 'inherit', background: '#fff' }}>
                                                                     {POINT_TYPES.map(opt => <option key={opt} value={opt}>{opt}</option>)}
                                                                 </select>
                                                             </div>
 
-                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
+                                                            <div className="point-row">
                                                                 <strong style={{ whiteSpace: 'nowrap', color: '#5c3a21' }}>🎯 到達判定:</strong>
-                                                                <select value={p.radius || 5} onChange={(e) => updatePoint(i, 'radius', Number(e.target.value))} style={{ padding: '4px', flex: 1, borderRadius: '4px', border: '1px solid #8b5a2b', fontWeight: 'bold', fontFamily: 'inherit', background: '#fff' }}>
+                                                                <select value={p.radius || 5} onChange={(e) => updatePoint(i, 'radius', Number(e.target.value))} style={{ flex: 1, borderRadius: '4px', border: '1px solid #8b5a2b', fontWeight: 'bold', fontFamily: 'inherit', background: '#fff' }}>
                                                                     <option value={1}>1m (非推奨)</option>
                                                                     <option value={5}>5m (厳しめ)</option>
                                                                     <option value={10}>10m (標準)</option>
@@ -342,12 +354,12 @@ export default function Home() {
                                                                 </select>
                                                             </div>
 
-                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '15px' }}>
+                                                            <div style={{ marginBottom: '15px' }}>
                                                                 <a
                                                                     href={`https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${p.lat},${p.lng}`}
                                                                     target="_blank"
                                                                     rel="noopener noreferrer"
-                                                                    style={{ padding: '6px 12px', backgroundColor: '#096dd9', color: 'white', textDecoration: 'none', borderRadius: '4px', fontSize: '14px', fontWeight: 'bold', width: '100%', textAlign: 'center', fontFamily: 'inherit' }}
+                                                                    style={{ display: 'block', padding: '10px', backgroundColor: '#096dd9', color: 'white', textDecoration: 'none', borderRadius: '4px', fontSize: '14px', fontWeight: 'bold', width: '100%', textAlign: 'center', fontFamily: 'inherit' }}
                                                                 >
                                                                     👀 この場所のストリートビューを開く
                                                                 </a>
@@ -355,33 +367,29 @@ export default function Home() {
 
                                                             {!isGoal && (
                                                                 <div style={{ padding: '12px', backgroundColor: '#eaddc5', borderRadius: '4px', border: '1px solid #8b5a2b', marginBottom: '10px' }}>
-                                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
+                                                                    <div className="point-row">
                                                                         <strong style={{ whiteSpace: 'nowrap' }}>🗺️ 形状:</strong>
-                                                                        <select value={p.intersectionShape || '十字路'} onChange={(e) => updatePoint(i, 'intersectionShape', e.target.value)} style={{ padding: '4px', flex: 1, borderRadius: '4px', border: '1px solid #8b5a2b', fontFamily: 'inherit' }}>
+                                                                        <select value={p.intersectionShape || '十字路'} onChange={(e) => updatePoint(i, 'intersectionShape', e.target.value)} style={{ flex: 1, borderRadius: '4px', border: '1px solid #8b5a2b', fontFamily: 'inherit' }}>
                                                                             {SHAPE_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
                                                                         </select>
                                                                     </div>
 
-                                                                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '10px' }}>
+                                                                    <div className="point-row">
                                                                         <strong style={{ whiteSpace: 'nowrap' }}>➡️ 指示:</strong>
-                                                                        <select value={p.direction} onChange={(e) => updatePoint(i, 'direction', e.target.value)} style={{ padding: '4px', width: '110px', borderRadius: '4px', border: '1px solid #8b5a2b', fontFamily: 'inherit' }}>
-                                                                            {currentAllowedDirections.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-                                                                        </select>
-                                                                        <input type="text" value={p.instruction} onChange={(e) => updatePoint(i, 'instruction', e.target.value)} placeholder="例：看板を右" style={{ flex: '1', padding: '4px', borderRadius: '4px', border: '1px solid #8b5a2b', fontFamily: 'inherit' }} />
+                                                                        <div style={{ display: 'flex', gap: '8px', flex: 1 }}>
+                                                                            <select value={p.direction} onChange={(e) => updatePoint(i, 'direction', e.target.value)} style={{ width: '110px', borderRadius: '4px', border: '1px solid #8b5a2b', fontFamily: 'inherit' }}>
+                                                                                {currentAllowedDirections.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                                                                            </select>
+                                                                            <input type="text" value={p.instruction} onChange={(e) => updatePoint(i, 'instruction', e.target.value)} placeholder="例：看板を右" style={{ flex: '1', borderRadius: '4px', border: '1px solid #8b5a2b', fontFamily: 'inherit' }} />
+                                                                        </div>
                                                                     </div>
 
-                                                                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '10px', padding: '8px', backgroundColor: '#fff', border: '1px solid #d46b08', borderRadius: '4px' }}>
+                                                                    <div className="point-row" style={{ backgroundColor: '#fff', border: '1px solid #d46b08', padding: '8px', borderRadius: '4px' }}>
                                                                         <strong style={{ whiteSpace: 'nowrap', color: '#d46b08' }}>📌 目印:</strong>
-                                                                        <input
-                                                                            type="text"
-                                                                            value={p.landmark || ''}
-                                                                            onChange={(e) => updatePoint(i, 'landmark', e.target.value)}
-                                                                            placeholder="例：右上の角に赤いポスト"
-                                                                            style={{ flex: '1', padding: '4px', borderRadius: '4px', border: '1px solid #ccc', fontFamily: 'inherit' }}
-                                                                        />
+                                                                        <input type="text" value={p.landmark || ''} onChange={(e) => updatePoint(i, 'landmark', e.target.value)} placeholder="例：右上の角に赤いポスト" style={{ flex: '1', borderRadius: '4px', border: '1px solid #ccc', fontFamily: 'inherit' }} />
                                                                     </div>
 
-                                                                    <input type="text" value={p.customNote || ''} onChange={(e) => updatePoint(i, 'customNote', e.target.value)} placeholder="AIへの補足（例: 中央に花壇）" style={{ width: '100%', padding: '4px', marginTop: '8px', fontSize: '13px', borderRadius: '4px', border: '1px solid #ccc', fontFamily: 'inherit' }} />
+                                                                    <input type="text" value={p.customNote || ''} onChange={(e) => updatePoint(i, 'customNote', e.target.value)} placeholder="AIへの補足（例: 中央に花壇）" style={{ width: '100%', padding: '8px', marginTop: '8px', fontSize: '13px', borderRadius: '4px', border: '1px solid #ccc', fontFamily: 'inherit' }} />
                                                                 </div>
                                                             )}
 
