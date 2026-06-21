@@ -4,10 +4,10 @@
 import Link from 'next/link';
 
 export default function TopPage() {
-  return (
-    <div className="top-page-container">
-      {/* 独自の世界観を表現するCSSスタイル */}
-      <style>{`
+    return (
+        <div className="top-page-container">
+            {/* 独自の世界観を表現するCSSスタイル */}
+            <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Zen+Kurenaido&display=swap');
         
         * { box-sizing: border-box; }
@@ -108,37 +108,37 @@ export default function TopPage() {
         }
       `}</style>
 
-      {/* ヘッダーエリア */}
-      <div className="header-area">
-        <h1 className="main-title">🧭 コマ地図ウォークラリー</h1>
-        <p className="sub-title">〜 街を歩く、目印を探す、冒険に出る 〜</p>
-      </div>
+            {/* ヘッダーエリア */}
+            <div className="header-area">
+                <h1 className="main-title">🧭 コマ地図ウォークラリー</h1>
+                <p className="sub-title">〜 街を歩く、目印を探す、冒険に出る 〜</p>
+            </div>
 
-      {/* メニュー選択エリア */}
-      <div className="menu-area">
-        
-        {/* 1. プレイヤー画面 (Play) へのリンク */}
-        <Link href="/play" className="menu-card">
-          <h2 className="card-title">🚶‍♂️ 冒険を始める (Play)</h2>
-          <p className="card-desc">
-            作成されたウォークラリーコースに挑戦します。スマートフォンのGPS機能と連動し、手元のコマ地図を頼りに隠されたチェックポイントの解放やゴールを目指して街を探索しましょう。
-          </p>
-        </Link>
+            {/* メニュー選択エリア */}
+            <div className="menu-area">
 
-        {/* 2. コース作成画面 (Create) へのリンク */}
-        <Link href="/create" className="menu-card" style={{ borderColor: '#722ed1', boxSideColor: '#722ed1', boxShadow: '3px 3px 0px #722ed1' }}>
-          <h2 className="card-title" style={{ color: '#531dab' }}>📚 コースを作る (Create)</h2>
-          <p className="card-desc" style={{ color: '#531dab' }}>
-            【管理者用機能】新しいウォークラリーのコースを設計します。地図上にピンを配置し、ストリートビューで現地の目印を確認しながら、AIと連携して本格的なコマ地図を一括生成します。
-          </p>
-        </Link>
-        
-      </div>
+                {/* 1. プレイヤー画面 (Play) へのリンク */}
+                <Link href="/play" className="menu-card">
+                    <h2 className="card-title">🚶‍♂️ 冒険を始める (Play)</h2>
+                    <p className="card-desc">
+                        作成されたウォークラリーコースに挑戦します。スマートフォンのGPS機能と連動し、手元のコマ地図を頼りに隠されたチェックポイントの解放やゴールを目指して街を探索しましょう。
+                    </p>
+                </Link>
 
-      {/* フッター */}
-      <div className="footer">
-        © コマ地図ウォークラリー冒険日誌
-      </div>
-    </div>
-  );
+                {/* 2. コース作成画面 (Create) へのリンク */}
+                <Link href="/create" className="menu-card" style={{ borderColor: '#722ed1', boxShadow: '3px 3px 0px #722ed1' }}>
+                    <h2 className="card-title" style={{ color: '#531dab' }}>📚 コースを作る (Create)</h2>
+                    <p className="card-desc" style={{ color: '#531dab' }}>
+                        【管理者用機能】新しいウォークラリーのコースを設計します。地図上にピンを配置し、ストリートビューで現地の目印を確認しながら、AIと連携して本格的なコマ地図を一括生成します。
+                    </p>
+                </Link>
+
+            </div>
+
+            {/* フッター */}
+            <div className="footer">
+                © コマ地図ウォークラリー冒険日誌
+            </div>
+        </div>
+    );
 }
